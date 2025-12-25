@@ -25,10 +25,11 @@ const AVATAR_BASE = "https://api.dicebear.com/7.x/adventurer/svg";
 export async function POST() {
   await connectDB();
   
-  // --- 1. 初始化 6 个 API 客户端 (负载均衡) ---
-  const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
-  const sfNews = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
-
+  // --- 1. 客户端初始化 ---
+  // SF: 负责环境、新闻、以及【写小说】(利用中文优势)
+  const sfClient = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  
+  // Groq: 负责高频逻辑决策 (全部改用 8b-instant 以避免 70b 限流)
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
@@ -79,10 +80,10 @@ export async function POST() {
     }
   }
 
-  // --- STEP 1: 环境 (SF Key 1) ---
+  // --- STEP 1: 环境 (SiliconFlow) ---
   let envData = { description: world.envDescription, weather: world.weather };
   try {
-    const res = await sfEnv.chat.completions.create({
+    const res = await sfClient.chat.completions.create({
       model: "Qwen/Qwen2.5-7B-Instruct",
       messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。JSON: {"weather":"", "description":""}` }],
       response_format: { type: "json_object" }
@@ -90,10 +91,10 @@ export async function POST() {
     envData = JSON.parse(res.choices[0].message.content);
   } catch(e) {}
 
-  // --- STEP 2: 角色决策 (4 Groq Keys) ---
+  // --- STEP 2: 角色决策 (4 Groq Keys - 全部使用 8b-instant) ---
   const getInfo = (agent) => {
     const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
-    const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}(${n.inventory.join(",")})`).join(", ");
+    const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}`).join(", ");
     return `位置:${getLocName(agent.x,agent.y)} 地上:[${ground}] 身边:[${people}] 背包:[${agent.inventory}]`;
   };
 
@@ -113,7 +114,7 @@ export async function POST() {
 
   const callActors = (client, list) => Promise.all(list.map(a => 
     client.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.1-8b-instant", // 使用 8b 模型，速度快且不限流
       messages: [{role:"user", content: getPrompt(a)}],
       response_format: { type: "json_object" }
     }).then(r => JSON.parse(r.choices[0].message.content)).catch(()=>({action:"TALK",target:"...",say:"..."}))
@@ -127,33 +128,27 @@ export async function POST() {
   ]);
   const rawActions = [...act1, ...act2, ...act3, ...act4];
 
-  // --- STEP 3: 逻辑裁判 (Groq Key 1) ---
+  // --- STEP 3: 逻辑裁判 (Groq Key 1 - 降级为 8b-instant) ---
+  // 8B 模型的逻辑能力足够处理战斗判断，且配额更多
   let refereeUpdates = [];
   try {
       const refereeRes = await groq1.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant", // 降级以避开 70b 限流
         messages: [{ 
           role: "user", 
           content: `
-            我是游戏后台裁判。请根据角色意图判定结果。
-            
-            角色意图: ${JSON.stringify(world.agents.map((a,i) => ({
+            我是游戏裁判。根据意图判定结果。
+            意图: ${JSON.stringify(world.agents.map((a,i) => ({
                 id: a.id, name: a.name, job: a.job, 
                 action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
             })))}
             
-            判定逻辑：
-            1. ATTACK: 比较战斗力，败者扣血。
+            规则：
+            1. ATTACK: 比较战斗力(如拳手>学生)，败者扣血。
             2. STEAL: 概率失败。
-            3. 其他: 符合逻辑即成功。
+            3. 其他: 成功。
             
-            返回 JSON (包含所有8人):
-            {
-              "updates": [
-                {"id": 0, "log": "...", "hp_change": 0},
-                ...
-              ]
-            }
+            返回 JSON: { "updates": [{"id": 0, "log": "...", "hp_change": 0}, ...] }
           ` 
         }],
         response_format: { type: "json_object" }
@@ -161,13 +156,13 @@ export async function POST() {
       const json = JSON.parse(refereeRes.choices[0].message.content);
       refereeUpdates = json.updates || json.results || [];
       
-      // 兜底补全
       if (refereeUpdates.length < 8) {
           world.agents.forEach(a => {
               if(!refereeUpdates.find(u=>u.id===a.id)) refereeUpdates.push({id:a.id, log:rawActions[a.id].say, hp_change:0});
           });
       }
   } catch(e) {
+      console.error("Referee Error:", e);
       refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
   }
 
@@ -208,14 +203,15 @@ export async function POST() {
       agent.hunger = Math.min(100, agent.hunger + 3);
   });
 
-  // --- STEP 5: 叙事 & 新闻 (Groq 2 & SF 2) ---
+  // --- STEP 5: 叙事 & 新闻 (转移至 SiliconFlow) ---
+  // 关键改动：把写小说的任务交给 SiliconFlow (Qwen)，它的中文更好，且不占 Groq 配额
   const [judgeRes, socialRes] = await Promise.all([
-      groq2.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
+      sfClient.chat.completions.create({
+        model: "Qwen/Qwen2.5-7B-Instruct",
+        messages: [{ role: "user", content: `写一段荒岛小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
         response_format: { type: "json_object" }
       }),
-      sfNews.chat.completions.create({
+      sfClient.chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
         messages: [{ role: "user", content: `生成社会新闻: ${JSON.stringify(refereeUpdates)}。返回 JSON: {"news": "..."}` }],
         response_format: { type: "json_object" }
