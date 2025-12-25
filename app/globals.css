@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 74, 222, 128; /* Hacker Green */
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: black;
+  /* 隐藏滚动条但允许滚动 */
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* 适配 iPhone 底部安全区域 */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
