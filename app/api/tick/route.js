@@ -20,7 +20,7 @@ const cleanJson = (str) => str.replace(/```json|```/g, '').trim();
 export async function POST() {
   await connectDB();
 
-  // --- API 资源池 ---
+  // --- API 资源池 (11 Key) ---
   const groqCluster = [
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" }),
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" }),
@@ -46,6 +46,8 @@ export async function POST() {
   // Step 1: 议会 (Groq 5)
   // ==========================================
   let councilLog = "";
+  let isCouncilSession = false; // 标记本回合是否开会
+
   if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 100 && Math.random() < 0.4) {
      try {
        const res = await groqCluster[4].chat.completions.create({
@@ -60,6 +62,7 @@ export async function POST() {
        if(cost.stone) world.globalResources.stone -= cost.stone;
        world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time, desc: council.reason });
        councilLog = `议会批准建造${cost.name}`;
+       isCouncilSession = true; // 触发开会状态
      } catch(e) {}
   }
 
@@ -67,10 +70,16 @@ export async function POST() {
   // Step 2: 角色意图 (Groq 1-4)
   // ==========================================
   const getPrompt = (agent) => {
+    // 动态 Prompt：如果有议会，强制发言；否则倾向于动作描述
+    let specificInst = isCouncilSession 
+      ? `议会刚刚决定建造新建筑，请发表你的看法！必须说话！` 
+      : `日常工作中。请多用动作描写(action_desc)，少说话(say留空)。只有在休息或互动时才说话。`;
+
     return `你叫${agent.name},职业${agent.job}. HP${agent.hp}. 
     当前蓝图:${world.buildings.find(b=>b.status==='blueprint')?.name || "无"}.
-    可执行: 1.WORK(干活) 2.COMMAND(指挥NPC) 3.REST(休息).
-    JSON:{"intent":"...", "target":"...", "say":"简短一句话"}`;
+    ${specificInst}
+    可执行: 1.WORK 2.COMMAND 3.REST.
+    JSON格式: {"intent":"...", "target":"...", "say":"台词(无话可说留空)", "action_desc":"动作描写(如:擦汗/凝视)"}`;
   };
   
   const callAI = (client, list) => Promise.all(list.map(a => 
@@ -78,7 +87,7 @@ export async function POST() {
       model: "llama-3.1-8b-instant",
       messages: [{role:"user", content: getPrompt(a)}],
       response_format: { type: "json_object" }
-    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"..."}))
+    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"", action_desc:"发呆"}))
   ));
 
   const [intents1, intents2, intents3, intents4] = await Promise.all([
@@ -95,23 +104,19 @@ export async function POST() {
   let matrixReport = "";
   try {
     const npcStates = world.npcs.map(n => ({id:n.id, role:n.role, task:n.currentTask}));
-    const agentRequests = world.agents.map((a, i) => ({ name: a.name, job: a.job, intent: allIntents[i].intent, say: allIntents[i].say }));
+    // 过滤发给主脑的信息，只保留关键动作
+    const agentRequests = world.agents.map((a, i) => ({ 
+        name: a.name, 
+        job: a.job, 
+        intent: allIntents[i].intent 
+    }));
 
     const matrixRes = await groqCluster[4].chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: `
-        我是系统主脑。
-        NPC: ${JSON.stringify(npcStates)}.
-        AI请求: ${JSON.stringify(agentRequests)}.
-        
-        逻辑:
-        1. AI intent='COMMAND'且有蓝图 -> 指派NPC '建设'.
-        2. 闲置 NPC -> '采集'.
-        
-        返回 JSON: {
-          "npc_updates": [{"id":"n1", "task":"..."}],
-          "events": ["张伟指挥...", "鲁班建设..."]
-        }
+        系统主脑。NPC: ${JSON.stringify(npcStates)}. AI请求: ${JSON.stringify(agentRequests)}.
+        逻辑: COMMAND+蓝图->指派NPC建设. 闲置NPC->采集.
+        返回JSON: {"npc_updates": [{"id":"n1", "task":"..."}], "events": ["张伟指挥...", "鲁班建设..."]}
       `}],
       response_format: { type: "json_object" }
     });
@@ -142,11 +147,13 @@ export async function POST() {
       }
     });
 
-  } catch (e) { console.error(e); matrixReport = "主脑逻辑处理中..."; }
+  } catch (e) { console.error(e); matrixReport = "主脑运行中..."; }
 
+  // 更新 AI 状态 (ActionLog 优先显示动作，其次才是台词)
   allIntents.forEach((intent, i) => {
     const agent = world.agents[i];
-    agent.actionLog = intent.say;
+    // 如果有台词，显示台词；没有台词，显示动作描述
+    agent.actionLog = intent.say ? `“${intent.say}”` : `[${intent.action_desc || "工作中"}]`;
     agent.hunger += 1;
     if (intent.intent === "WORK" && (agent.job === "建筑师" || agent.job === "工匠")) {
         const bp = world.buildings.find(b => b.status === "blueprint");
@@ -155,31 +162,39 @@ export async function POST() {
   });
 
   // ==========================================
-  // Step 4: 叙事优化 (省流模式)
+  // Step 4: 叙事生成 (SiliconFlow)
   // ==========================================
   const timeNow = ["晨","午","昏","夜"][(world.turn - 1) % 4];
   let envData = { weather: world.weather, desc: world.envDescription };
   let story = "";
 
   try {
-    // 策略优化：每3回合（约1分钟）才更新一次环境，节省 30% Token
+    // 降频更新环境
     if (world.turn % 3 === 1 || !world.envDescription) {
       const r1 = await getRandomSF().chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 生成极简环境(15字). JSON:{"weather":"...","desc":"..."}`}],
+        messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 极简环境(15字). JSON:{"weather":"...","desc":"..."}`}],
         response_format: { type: "json_object" }
       });
       envData = JSON.parse(cleanJson(r1.choices[0].message.content));
     }
 
-    // 剧情优化：字数限制 200-350，重点写人
+    // 构建剧情输入素材：区分“发言者”和“行动者”
+    const activeCharacters = allIntents.map((act, i) => {
+        const name = world.agents[i].name;
+        if (act.say) return `${name}说:"${act.say}"`; // 有台词
+        if (act.action_desc) return `${name}${act.action_desc}`; // 只有动作
+        return null; 
+    }).filter(Boolean).slice(0, 6).join("；"); // 只取前6个主要动态，防止Token爆炸
+
     const r2 = await getRandomSF().chat.completions.create({
        model: "Qwen/Qwen2.5-7B-Instruct",
        messages: [{role:"user", content: `
-         写一段200-350字的短剧情。
-         环境:${envData.desc} (一笔带过)。
-         重点描述:${matrixReport} 以及 ${allIntents.slice(0,4).map(a=>a.say).join("|")}。
-         要求：重点描写角色的动作、对话和心理活动，减少环境描写。
+         写200-350字微小说。
+         环境:${envData.desc} (一笔带过).
+         议会:${councilLog}. 系统:${matrixReport}.
+         角色动态:${activeCharacters}.
+         要求: 只有部分人说话。描写要有镜头感，多写神态动作。
          必须返回 JSON:{"story":"..."}
        `}],
        response_format: { type: "json_object" }
@@ -187,7 +202,7 @@ export async function POST() {
      story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
   } catch(e) {
      console.error("Story Error", e);
-     story = `[系统战报] ${envData.weather}。${matrixReport}。AI状态：${allIntents[0]?.intent || "待机"}... \n(API响应异常: ${e.message})`;
+     story = `[系统战报] ${envData.weather}。${matrixReport || "正常运行"}。${isCouncilSession ? "议会正在进行激烈的讨论。" : "幸存者们正在各自忙碌。"}`;
   }
 
   // ==========================================
