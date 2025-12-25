@@ -46,7 +46,7 @@ export async function POST() {
   // Step 1: 议会 (Groq 5)
   // ==========================================
   let councilLog = "";
-  let isCouncilSession = false; 
+  let isCouncilSession = false;
 
   if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 100 && Math.random() < 0.4) {
      try {
@@ -62,8 +62,8 @@ export async function POST() {
        if(cost.stone) world.globalResources.stone -= cost.stone;
        world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time, desc: council.reason });
        councilLog = `议会批准建造${cost.name}`;
-       isCouncilSession = true; 
-     } catch(e) { console.error("Council Error", e); }
+       isCouncilSession = true;
+     } catch(e) {}
   }
 
   // ==========================================
@@ -122,6 +122,7 @@ export async function POST() {
     const decision = JSON.parse(matrixRes.choices[0].message.content);
     matrixReport = decision.events?.join(" ") || "";
 
+    // 应用 NPC 更新
     const updates = decision.npc_updates || [];
     world.npcs.forEach(npc => {
       const update = updates.find(u => u.id === npc.id);
@@ -134,7 +135,6 @@ export async function POST() {
             if (npc.currentTask === "伐木") world.globalResources.wood += 2;
         }
       }
-      
       if (npc.currentTask.includes("建设")) {
          const bp = world.buildings.find(b => b.status === "blueprint");
          if (bp) {
@@ -157,20 +157,30 @@ export async function POST() {
   });
 
   // ==========================================
-  // Step 4: 叙事生成 (SiliconFlow)
+  // Step 4: 叙事生成 (SiliconFlow) - 动态环境优化版
   // ==========================================
   const timeNow = ["晨","午","昏","夜"][(world.turn - 1) % 4];
   let envData = { weather: world.weather, desc: world.envDescription };
   let story = "";
 
   try {
-    if (world.turn % 3 === 1 || !world.envDescription) {
+    const isEnvUpdateTurn = world.turn % 3 === 1 || !world.envDescription;
+    let envInstruction = "";
+
+    if (isEnvUpdateTurn) {
+      // --- 更新回合：生成新环境并要求描写 ---
       const r1 = await getRandomSF().chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
         messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 极简环境(15字). JSON:{"weather":"...","desc":"..."}`}],
         response_format: { type: "json_object" }
       });
       envData = JSON.parse(cleanJson(r1.choices[0].message.content));
+      // 指令：需要描写
+      envInstruction = `环境变化:${envData.desc} (请在开头简要描写)`;
+    } else {
+      // --- 保持回合：使用旧环境，但要求忽略描写 ---
+      // 指令：明确要求不写环境
+      envInstruction = `环境(保持不变): ${envData.desc} (⚠️本段落请完全省略环境描写，将字数全部用于人物动作和交互)`;
     }
 
     const activeCharacters = allIntents.map((act, i) => {
@@ -184,7 +194,7 @@ export async function POST() {
        model: "Qwen/Qwen2.5-7B-Instruct",
        messages: [{role:"user", content: `
          写200-350字微小说。
-         环境:${envData.desc} (一笔带过).
+         ${envInstruction}
          议会:${councilLog}. 系统:${matrixReport}.
          角色动态:${activeCharacters}.
          要求: 只有部分人说话。描写要有镜头感，多写神态动作。
@@ -195,8 +205,7 @@ export async function POST() {
      story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
   } catch(e) {
      console.error("Story Error", e);
-     // --- 核心修改：直接显示真实报错信息 ---
-     story = `⚠️ [AI NARRATIVE ERROR]\n无法生成小说内容。\n错误详情: ${e.message}\n(请检查 Vercel 环境变量 SF_API_KEY 是否配置正确)`;
+     story = `⚠️ [AI ERROR] ${e.message}`;
   }
 
   // ==========================================
