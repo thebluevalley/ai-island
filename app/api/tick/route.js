@@ -46,7 +46,7 @@ export async function POST() {
   // Step 1: 议会 (Groq 5)
   // ==========================================
   let councilLog = "";
-  let isCouncilSession = false; // 标记本回合是否开会
+  let isCouncilSession = false; 
 
   if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 100 && Math.random() < 0.4) {
      try {
@@ -62,18 +62,17 @@ export async function POST() {
        if(cost.stone) world.globalResources.stone -= cost.stone;
        world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time, desc: council.reason });
        councilLog = `议会批准建造${cost.name}`;
-       isCouncilSession = true; // 触发开会状态
-     } catch(e) {}
+       isCouncilSession = true; 
+     } catch(e) { console.error("Council Error", e); }
   }
 
   // ==========================================
   // Step 2: 角色意图 (Groq 1-4)
   // ==========================================
   const getPrompt = (agent) => {
-    // 动态 Prompt：如果有议会，强制发言；否则倾向于动作描述
     let specificInst = isCouncilSession 
       ? `议会刚刚决定建造新建筑，请发表你的看法！必须说话！` 
-      : `日常工作中。请多用动作描写(action_desc)，少说话(say留空)。只有在休息或互动时才说话。`;
+      : `日常工作中。请多用动作描写(action_desc)，少说话(say留空)。`;
 
     return `你叫${agent.name},职业${agent.job}. HP${agent.hp}. 
     当前蓝图:${world.buildings.find(b=>b.status==='blueprint')?.name || "无"}.
@@ -87,7 +86,7 @@ export async function POST() {
       model: "llama-3.1-8b-instant",
       messages: [{role:"user", content: getPrompt(a)}],
       response_format: { type: "json_object" }
-    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"", action_desc:"发呆"}))
+    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"", action_desc:"思考中"}))
   ));
 
   const [intents1, intents2, intents3, intents4] = await Promise.all([
@@ -104,7 +103,6 @@ export async function POST() {
   let matrixReport = "";
   try {
     const npcStates = world.npcs.map(n => ({id:n.id, role:n.role, task:n.currentTask}));
-    // 过滤发给主脑的信息，只保留关键动作
     const agentRequests = world.agents.map((a, i) => ({ 
         name: a.name, 
         job: a.job, 
@@ -124,7 +122,6 @@ export async function POST() {
     const decision = JSON.parse(matrixRes.choices[0].message.content);
     matrixReport = decision.events?.join(" ") || "";
 
-    // 应用 NPC 更新
     const updates = decision.npc_updates || [];
     world.npcs.forEach(npc => {
       const update = updates.find(u => u.id === npc.id);
@@ -147,12 +144,10 @@ export async function POST() {
       }
     });
 
-  } catch (e) { console.error(e); matrixReport = "主脑运行中..."; }
+  } catch (e) { console.error(e); matrixReport = `主脑运算异常: ${e.message}`; }
 
-  // 更新 AI 状态 (ActionLog 优先显示动作，其次才是台词)
   allIntents.forEach((intent, i) => {
     const agent = world.agents[i];
-    // 如果有台词，显示台词；没有台词，显示动作描述
     agent.actionLog = intent.say ? `“${intent.say}”` : `[${intent.action_desc || "工作中"}]`;
     agent.hunger += 1;
     if (intent.intent === "WORK" && (agent.job === "建筑师" || agent.job === "工匠")) {
@@ -169,7 +164,6 @@ export async function POST() {
   let story = "";
 
   try {
-    // 降频更新环境
     if (world.turn % 3 === 1 || !world.envDescription) {
       const r1 = await getRandomSF().chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
@@ -179,13 +173,12 @@ export async function POST() {
       envData = JSON.parse(cleanJson(r1.choices[0].message.content));
     }
 
-    // 构建剧情输入素材：区分“发言者”和“行动者”
     const activeCharacters = allIntents.map((act, i) => {
         const name = world.agents[i].name;
-        if (act.say) return `${name}说:"${act.say}"`; // 有台词
-        if (act.action_desc) return `${name}${act.action_desc}`; // 只有动作
+        if (act.say) return `${name}说:"${act.say}"`;
+        if (act.action_desc) return `${name}${act.action_desc}`;
         return null; 
-    }).filter(Boolean).slice(0, 6).join("；"); // 只取前6个主要动态，防止Token爆炸
+    }).filter(Boolean).slice(0, 6).join("；");
 
     const r2 = await getRandomSF().chat.completions.create({
        model: "Qwen/Qwen2.5-7B-Instruct",
@@ -202,7 +195,8 @@ export async function POST() {
      story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
   } catch(e) {
      console.error("Story Error", e);
-     story = `[系统战报] ${envData.weather}。${matrixReport || "正常运行"}。${isCouncilSession ? "议会正在进行激烈的讨论。" : "幸存者们正在各自忙碌。"}`;
+     // --- 核心修改：直接显示真实报错信息 ---
+     story = `⚠️ [AI NARRATIVE ERROR]\n无法生成小说内容。\n错误详情: ${e.message}\n(请检查 Vercel 环境变量 SF_API_KEY 是否配置正确)`;
   }
 
   // ==========================================
