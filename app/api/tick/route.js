@@ -13,7 +13,6 @@ const MAP_LOCATIONS = {
 };
 const getLocName = (x, y) => MAP_LOCATIONS[`${x},${y}`] || "荒野";
 
-// 资源刷新表
 const SPAWN_RULES = {
   "1,0": ["椰子", "树枝"], "0,1": ["蛤蜊", "漂流木"], 
   "1,2": ["淡水鱼", "鹅卵石"], "2,0": ["蘑菇", "野果"], 
@@ -23,20 +22,17 @@ const SPAWN_RULES = {
 export async function POST() {
   await connectDB();
   
-  // --- 1. 初始化 6 个 API 客户端 ---
-  // 硅基流动 (SF)
+  // --- 1. 6-Key 客户端初始化 ---
   const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   const sfNews = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
 
-  // Groq (G)
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   
-  // --------------------------------------------------
-
   let world = await World.findOne();
+  // 简化的防崩溃初始化 (若数据库为空)
   if (!world || !world.agents || world.agents.length < 8) {
      if(world) await World.deleteMany({});
      world = await World.create({
@@ -59,7 +55,7 @@ export async function POST() {
   const timeNow = timeSlots[(world.turn - 1) % 6];
   const dayCount = Math.floor((world.turn - 1) / 6) + 1;
 
-  // --- STEP 0: 资源自然刷新 ---
+  // --- STEP 0: 资源刷新 ---
   if (Math.random() < 0.4) {
     const coords = Object.keys(SPAWN_RULES);
     const rC = coords[Math.floor(Math.random() * coords.length)];
@@ -71,18 +67,19 @@ export async function POST() {
     }
   }
 
-  // --- STEP 1: 环境生成 (SF Key 1 - 专职环境) ---
+  // --- STEP 1: 环境 (SF Key 1) ---
   let envData = { description: world.envDescription, weather: world.weather };
   try {
     const res = await sfEnv.chat.completions.create({
       model: "Qwen/Qwen2.5-7B-Instruct",
-      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。JSON: {"weather":"", "description":""}` }],
+      // 修复：确保包含 "JSON"
+      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。请返回 JSON: {"weather":"", "description":""}` }],
       response_format: { type: "json_object" }
     });
     envData = JSON.parse(res.choices[0].message.content);
   } catch(e) {}
 
-  // --- STEP 2: 角色决策 (4 Groq Keys 并发) ---
+  // --- STEP 2: 角色决策 (4 Groq Keys) ---
   const getInfo = (agent) => {
     const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
     const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}(${n.inventory.join(",")})`).join(", ");
@@ -93,26 +90,22 @@ export async function POST() {
     你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
     环境: ${envData.description}。
     感知: ${getInfo(agent)}
-    
     决策规则:
-    1. **冲突**: 想要别人的东西可以 STEAL 或 ATTACK。
-    2. **生存**: 饿了EAT。地上有东西PICKUP。
-    3. **建设**: 在中央广场且有材料BUILD。
-    4. **移动**: MOVE。
-    5. **社交**: TALK。
-    
-    输出JSON: {"action": "动作类型", "target": "目标对象", "say": "台词"}
+    1. 交互: 身边有人 TALK, GIVE, ATTACK, STEAL。
+    2. 生存: 饿了EAT。有东西PICKUP。
+    3. 建设: 中央广场BUILD。
+    4. 移动: MOVE。
+    请返回 JSON: {"action": "动作类型", "target": "目标", "say": "台词"}
   `;
 
   const callActors = (client, list) => Promise.all(list.map(a => 
     client.chat.completions.create({
-      model: "llama-3.1-8b-instant", // 极速模型
+      model: "llama-3.1-8b-instant",
       messages: [{role:"user", content: getPrompt(a)}],
       response_format: { type: "json_object" }
     }).then(r => JSON.parse(r.choices[0].message.content)).catch(()=>({action:"TALK",target:"...",say:"..."}))
   ));
 
-  // 4路并发，每路只负责2个人，速度极快
   const [act1, act2, act3, act4] = await Promise.all([
     callActors(groq1, world.agents.slice(0,2)),
     callActors(groq2, world.agents.slice(2,4)),
@@ -121,12 +114,11 @@ export async function POST() {
   ]);
   const rawActions = [...act1, ...act2, ...act3, ...act4];
 
-  // --- STEP 3: 逻辑裁判 (Groq Key 1 - 兼职裁判长) ---
-  // 这是最核心的一步：处理冲突、战斗结算
+  // --- STEP 3: 逻辑裁判 (Groq Key 1) ---
   let refereeUpdates = [];
   try {
       const refereeRes = await groq1.chat.completions.create({
-        model: "llama-3.3-70b-versatile", // 逻辑最强模型
+        model: "llama-3.3-70b-versatile",
         messages: [{ 
           role: "user", 
           content: `
@@ -137,43 +129,48 @@ export async function POST() {
                 action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
             })))}
             
-            判定逻辑：
-            1. **ATTACK**: 比如拳手打学生，拳手胜，学生扣15血；学生打消防员，可能无效或扣2血。
-            2. **STEAL**: 偷窃有概率失败，失败会被发现。
-            3. **普通行动**: 只要符合逻辑(有物品/在现场)即成功。
+            判定规则：
+            1. ATTACK: 比较战斗力，败者扣血。
+            2. STEAL: 概率失败。
+            3. 其他: 符合逻辑即成功。
             
-            返回 JSON 数组 (必须包含所有8个人):
-            [
-              {"id": 0, "log": "...", "hp_change": 0},
-              ...
-            ]
+            请返回 JSON 对象:
+            {
+              "updates": [
+                {"id": 0, "log": "...", "hp_change": 0},
+                ...
+              ]
+            }
           ` 
         }],
         response_format: { type: "json_object" }
       });
       const json = JSON.parse(refereeRes.choices[0].message.content);
-      refereeUpdates = Array.isArray(json) ? json : (json.updates || json.results || []);
-      // 容错：如果格式不对，兜底
-      if (refereeUpdates.length < 8) throw new Error("裁判返回数据缺失");
+      // 修复：更加稳健的 JSON 解析
+      refereeUpdates = json.updates || json.results || [];
+      
+      // 兜底：如果裁判漏了人，强制补全
+      if (refereeUpdates.length < 8) {
+          const missingIds = world.agents.map(a=>a.id).filter(id => !refereeUpdates.find(u=>u.id===id));
+          missingIds.forEach(id => {
+              refereeUpdates.push({id, log: rawActions[id].say, hp_change: 0});
+          });
+      }
   } catch(e) {
       console.error("Referee Error:", e);
       refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
   }
 
-  // --- STEP 4: 执行裁判结果 (写入数据库) ---
+  // --- STEP 4: 执行 ---
   refereeUpdates.forEach(u => {
       const agent = world.agents.find(a => a.id === u.id);
       const rawAct = rawActions[u.id];
       if (!agent) return;
 
-      // 更新血量和日志
       agent.hp = Math.max(0, Math.min(100, agent.hp + (u.hp_change || 0)));
-      agent.actionLog = u.log || rawAct.say; // 优先用裁判的描述
+      agent.actionLog = u.log || rawAct.say;
       
-      // 物理世界更新 (辅助裁判)
       const coord = `${agent.x},${agent.y}`;
-      
-      // 移动
       if (rawAct.action === "MOVE") {
          const moves = [[0,1], [0,-1], [1,0], [-1,0]];
          const m = moves[Math.floor(Math.random()*moves.length)];
@@ -181,19 +178,15 @@ export async function POST() {
          agent.y = Math.max(0, Math.min(2, agent.y+m[1]));
          agent.locationName = getLocName(agent.x, agent.y);
       }
-      
-      // 采集
       if (rawAct.action === "PICKUP" && rawAct.target) {
           const ground = world.mapResources[coord] || [];
           const idx = ground.findIndex(i=>i.includes(rawAct.target));
           if (idx > -1) {
               ground.splice(idx, 1);
-              agent.inventory.push(ground[idx]); // 简化的字符串物品
+              agent.inventory.push(ground[idx]);
               world.mapResources[coord] = ground;
           }
       }
-      
-      // 进食
       if (rawAct.action === "EAT") {
           const idx = agent.inventory.findIndex(i=>i.includes(rawAct.target));
           if (idx > -1) {
@@ -202,22 +195,21 @@ export async function POST() {
               agent.hp = Math.min(100, agent.hp + 5);
           }
       }
-
-      // 代谢
       agent.hunger = Math.min(100, agent.hunger + 3);
   });
 
-  // --- STEP 5: 叙事与新闻 (Groq Key 2 & SF Key 2) ---
-  // Groq 2 负责写小说，SF 2 负责写新闻，互不干扰
+  // --- STEP 5: 叙事 (Groq 2) & 新闻 (SF 2) ---
   const [judgeRes, socialRes] = await Promise.all([
       groq2.chat.completions.create({
         model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于结果: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}` }],
+        // 修复：强制包含 "JSON" 关键字，解决 400 错误
+        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于结果: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。请返回 JSON: {"story": "..."}` }],
         response_format: { type: "json_object" }
       }),
       sfNews.chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{ role: "user", content: `生成一条社会大新闻: ${JSON.stringify(refereeUpdates)}。JSON: {"news":""}` }],
+        // 修复：强制包含 "JSON" 关键字
+        messages: [{ role: "user", content: `生成社会新闻: ${JSON.stringify(refereeUpdates)}。请返回 JSON: {"news": "..."}` }],
         response_format: { type: "json_object" }
       })
   ]);
