@@ -3,14 +3,6 @@ import OpenAI from 'openai';
 import connectDB from '@/lib/db';
 import { World } from '@/lib/models';
 
-// --- API 配置 ---
-const groqEnv = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" });
-const groqSocial = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" });
-const groqJudge = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3, baseURL: "https://api.groq.com/openai/v1" });
-
-const sfTeamA = new OpenAI({ apiKey: process.env.SF_API_KEY_1, baseURL: "https://api.siliconflow.cn/v1" });
-const sfTeamB = new OpenAI({ apiKey: process.env.SF_API_KEY_2, baseURL: "https://api.siliconflow.cn/v1" });
-
 export const maxDuration = 60;
 
 // --- 地图配置 ---
@@ -23,29 +15,37 @@ const getLocName = (x, y) => MAP_LOCATIONS[`${x},${y}`] || "荒野";
 
 // --- 资源刷新规则 ---
 const SPAWN_RULES = {
-  "1,0": ["椰子", "树枝", "宽叶片"], // 椰林
-  "0,1": ["蛤蜊", "海带", "漂流木"], // 浅滩
-  "1,2": ["淡水", "淡水鱼", "鹅卵石"], // 溪流
-  "2,0": ["蘑菇", "硬木", "野果"], // 密林
-  "2,1": ["石块", "燧石"], // 山坡
-  "0,2": ["废铁片", "塑料布"] // 沉船
+  "1,0": ["椰子", "树枝", "宽叶片"], 
+  "0,1": ["蛤蜊", "海带", "漂流木"], 
+  "1,2": ["淡水", "淡水鱼", "鹅卵石"], 
+  "2,0": ["蘑菇", "硬木", "野果"], 
+  "2,1": ["石块", "燧石"], 
+  "0,2": ["废铁片", "塑料布"] 
 };
 
 export async function POST() {
   await connectDB();
+  
+  // --- 关键修复：将 API 客户端初始化移到函数内部 ---
+  // 这样构建时不会报错，只有运行时才会读取 Key
+  const groqEnv = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  const groqSocial = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  const groqJudge = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+
+  const sfTeamA = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  const sfTeamB = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  // --------------------------------------------------
+
   let world = await World.findOne();
 
-  // 初始化世界 (代码省略，保持之前的8人设定，这里为了简洁只展示逻辑更新)
+  // 初始化世界
   if (!world || !world.agents || world.agents.length < 8) {
-     // ... 请保留之前的 8 人初始化代码，或者手动重置一次 ...
-     // 为了确保代码完整性，这里简写，如果你是全新的库，请复制上一个回答的初始化部分
-     // 重点是确保 world.mapResources = {} 和 world.mapBuildings = {} 被初始化
      if(world) await World.deleteMany({});
      world = await World.create({
         turn: 1, 
         weather: "晴朗",
-        mapResources: {}, // 初始化资源层
-        mapBuildings: { "1,1": { name: "幸存者营地", progress: 0, max: 100 } }, // 初始化一个建筑工地
+        mapResources: {}, 
+        mapBuildings: { "1,1": { name: "幸存者营地", progress: 0, max: 100 } },
         agents: [
             { id: 0, name: "张伟", gender: "男", age: 34, job: "前消防员", personality: "领袖气质", inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场" },
             { id: 1, name: "林晓云", gender: "女", age: 26, job: "植物学者", personality: "温柔", inventory: ["采集袋"], x:1, y:1, locationName:"中央广场" },
@@ -65,19 +65,16 @@ export async function POST() {
   const timeNow = timeSlots[(world.turn - 1) % 6];
   const dayCount = Math.floor((world.turn - 1) / 6) + 1;
 
-  // --- STEP 0: 资源自然刷新 (Resource Spawning) ---
-  // 只有 30% 概率刷新，防止满地都是垃圾
+  // --- STEP 0: 资源自然刷新 ---
   if (Math.random() < 0.4) {
     const coords = Object.keys(SPAWN_RULES);
     const randomCoord = coords[Math.floor(Math.random() * coords.length)];
     const possibleItems = SPAWN_RULES[randomCoord];
     const newItem = possibleItems[Math.floor(Math.random() * possibleItems.length)];
     
-    // 更新 mapResources
     const currentItems = world.mapResources[randomCoord] || [];
-    if (currentItems.length < 5) { // 每个格子最多堆积5个物品
+    if (currentItems.length < 5) { 
       currentItems.push(newItem);
-      // Mongoose Map/Object 更新需要重新赋值
       world.mapResources = { ...world.mapResources, [randomCoord]: currentItems };
     }
   }
@@ -91,14 +88,10 @@ export async function POST() {
   const envData = JSON.parse(envRes.choices[0].message.content);
 
   // --- STEP 2: 角色决策 (SiliconFlow) ---
-  
-  // 辅助函数：获取当前位置的资源
   const getGroundItems = (x, y) => {
     const items = world.mapResources[`${x},${y}`] || [];
     return items.length > 0 ? items.join(", ") : "无";
   };
-  
-  // 辅助函数：获取当前位置建筑状态
   const getBuilding = (x, y) => {
     const b = world.mapBuildings[`${x},${y}`];
     return b ? `${b.name}(进度${b.progress}%)` : "荒地";
@@ -142,90 +135,81 @@ export async function POST() {
   ]);
   const allActions = [...groupA_Res, ...groupB_Res];
 
-  // --- STEP 3: 物理裁判与逻辑结算 (Groq Judge) ---
-  // 这里我们必须用代码逻辑辅助 AI，因为纯 AI 处理库存容易出错
-  // 我们构建一个 "Action Request" 列表给 Groq 润色，但在代码里实际执行加减法
-
+  // --- STEP 3: 物理裁判与逻辑结算 ---
   const updates = [];
-  const logEntries = [];
-
   for (let i = 0; i < world.agents.length; i++) {
     const agent = world.agents[i];
     const act = allActions[i];
     const coord = `${agent.x},${agent.y}`;
     let update = { id: agent.id, action_log: act.say };
     
-    // --- 逻辑结算 ---
-    
-    // 1. 移动 (MOVE)
+    // 简单移动逻辑
     if (act.action === "MOVE") {
-      const dirMap = { "东": [1,0], "西": [-1,0], "南": [0,1], "北": [0,-1] };
-      // 简单的方向解析，这里简化处理，让 AI 尽量输出坐标变化，或者由 Groq 解析
-      // 为了稳定，我们假设 AI 输出的是 "东" 或 "1,0"
-      // 这里简化为：如果 AI 想动，随机动一下或者保持不动（偷懒写法，建议让 Judge 处理）
-      // **更强的方法：** 将移动逻辑交给下面的 Groq Judge 统一判定
+        // 随机移动到一个相邻格子 (简化处理)
+        const moves = [[0,1], [0,-1], [1,0], [-1,0]];
+        const move = moves[Math.floor(Math.random() * moves.length)];
+        agent.x = Math.max(0, Math.min(2, agent.x + move[0]));
+        agent.y = Math.max(0, Math.min(2, agent.y + move[1]));
+        agent.locationName = getLocName(agent.x, agent.y);
+        update.action_log = `移动到了 ${agent.locationName}`;
     }
     
-    // 2. 捡拾 (PICKUP)
+    // 捡拾
     if (act.action === "PICKUP" && act.target) {
       const ground = world.mapResources[coord] || [];
-      const itemIndex = ground.indexOf(act.target);
+      const itemIndex = ground.findIndex(i => i.includes(act.target)); // 模糊匹配
       if (itemIndex > -1) {
-        ground.splice(itemIndex, 1); // 从地上移除
-        agent.inventory.push(act.target); // 加到背包
-        world.mapResources[coord] = ground; // 更新地图
-        update.action_log = `弯腰捡起了 ${act.target}`;
+        const item = ground[itemIndex];
+        ground.splice(itemIndex, 1);
+        agent.inventory.push(item);
+        world.mapResources[coord] = ground;
+        update.action_log = `捡起了 ${item}`;
       }
     }
 
-    // 3. 进食 (EAT)
+    // 进食
     if (act.action === "EAT") {
-      const foodIndex = agent.inventory.findIndex(item => item.includes(act.target)); // 模糊匹配
+      const foodIndex = agent.inventory.findIndex(item => item.includes(act.target));
       if (foodIndex > -1) {
         agent.inventory.splice(foodIndex, 1);
-        agent.hunger = Math.max(0, agent.hunger - 30); // 恢复 30 点饱食
+        agent.hunger = Math.max(0, agent.hunger - 30);
         agent.hp = Math.min(100, agent.hp + 5);
-        update.action_log = `大口吃掉了 ${act.target}，感觉活过来了`;
+        update.action_log = `吃了 ${act.target}`;
       }
     }
 
-    // 4. 建造 (BUILD) - 仅限中央广场
+    // 建造
     if (act.action === "BUILD" && coord === "1,1") {
-      const hasMat = agent.inventory.find(item => item.match(/木|石|铁/));
+      const hasMat = agent.inventory.find(item => item.match(/木|石|铁|枝/));
       if (hasMat) {
         const matIndex = agent.inventory.indexOf(hasMat);
-        agent.inventory.splice(matIndex, 1); // 消耗材料
+        agent.inventory.splice(matIndex, 1);
         const building = world.mapBuildings["1,1"];
         building.progress = Math.min(100, building.progress + 10);
         world.mapBuildings["1,1"] = building;
-        update.action_log = `用 ${hasMat} 加固了营地 (进度${building.progress}%)`;
-      } else {
-        update.action_log = `想帮忙盖房子，但是手里没有材料`;
+        update.action_log = `消耗${hasMat}建设营地 (进度${building.progress}%)`;
       }
     }
 
-    // 自然代谢
-    agent.hunger = Math.min(100, agent.hunger + 3); // 每回合饿 3 点
-    if (agent.hunger >= 90) agent.hp -= 5; // 饿过头扣血
-
+    // 代谢
+    agent.hunger = Math.min(100, agent.hunger + 3);
+    if (agent.hunger >= 90) agent.hp -= 5;
     updates.push(update);
   }
 
-  // --- STEP 4: 叙事裁判 (Groq Judge) ---
-  // 将上面的物理结算结果告诉 Groq，让它写小说
+  // --- STEP 4: 叙事裁判 ---
   const judgeRes = await groqJudge.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [{ 
       role: "user", 
       content: `
         写一段荒岛生存小说。
-        角色实际发生的行为: ${JSON.stringify(updates.map((u,i) => ({name: world.agents[i].name, log: u.action_log})))}
+        角色行为: ${JSON.stringify(updates.map((u,i) => ({name: world.agents[i].name, log: u.action_log})))}
         当前环境: ${envData.description}
         
         要求：
-        1. 描写大家为了生存而忙碌的场景（有人找吃的，有人盖房子）。
-        2. 如果有人捡到了东西，描写由于物资稀缺带来的喜悦。
-        3. 300字以内，群像描写。
+        1. 描写大家为了生存而忙碌（找吃、盖房）。
+        2. 300字以内，群像描写，富有文学性。
         JSON: {"story": "..."}
       ` 
     }],
@@ -233,29 +217,25 @@ export async function POST() {
   });
   const storyData = JSON.parse(judgeRes.choices[0].message.content);
 
-  // --- STEP 5: 社会八卦 (Groq Social) ---
+  // --- STEP 5: 社会八卦 ---
   const socialRes = await groqSocial.chat.completions.create({
     model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: `基于以下行为生成一条简短社会动态: ${JSON.stringify(updates)}。JSON: {"news":"..."}` }],
+    messages: [{ role: "user", content: `生成一条社会动态: ${JSON.stringify(updates)}。JSON: {"news":"..."}` }],
     response_format: { type: "json_object" }
   });
   const socialData = JSON.parse(socialRes.choices[0].message.content);
 
-  // --- 保存数据 ---
+  // 保存
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.description;
   world.socialNews = socialData.news;
   world.logs.push(storyData.story);
   
-  // 更新 Agent 状态 (Action Log)
-  updates.forEach((u, i) => {
-    world.agents[i].actionLog = u.action_log;
-  });
+  updates.forEach((u, i) => { world.agents[i].actionLog = u.action_log; });
 
   if (world.logs.length > 50) world.logs.shift();
   
-  // 关键：因为修改了 mapResources 和 mapBuildings 这种 Object 类型，必须手动 markModified
   world.markModified('mapResources');
   world.markModified('mapBuildings');
   world.markModified('agents');
