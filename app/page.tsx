@@ -1,18 +1,17 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 
 type Agent = {
   id: number;
   name: string;
   job: string;
-  gender: string;
   hp: number;
   hunger: number;
   inventory: string[];
   locationName: string;
   actionLog: string;
-  avatarUrl?: string; // 标记为可选
+  avatarUrl?: string;
 };
 
 export default function Home() {
@@ -20,15 +19,15 @@ export default function Home() {
   const [envInfo, setEnvInfo] = useState({
     weather: "...",
     time: "...",
-    desc: "正在建立连接...",
+    desc: "正在建立卫星连接...",
     news: "暂无动态", 
     day: 1
   });
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 获取数据
   const fetchData = async () => {
      if (loading || isPaused) return;
      setLoading(true);
@@ -50,7 +49,7 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("⚠️ 警告：确定要重置世界吗？这会清空当前进度。")) return;
+    if (!confirm("⚠️ 警告：确定要重置世界吗？进度将丢失。")) return;
     setIsPaused(true);
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
@@ -61,99 +60,191 @@ export default function Home() {
     const timer = setInterval(() => { if (!isPaused) fetchData(); }, 12000);
     return () => clearInterval(timer);
   }, [isPaused]);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [logs]);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-stone-100 text-stone-800 font-sans overflow-hidden">
-      {/* 顶部栏 */}
-      <header className="shrink-0 h-14 bg-white/90 backdrop-blur border-b border-stone-200 px-4 flex justify-between items-center z-30">
-        <div className="flex items-center gap-2">
-          <div className="bg-stone-900 text-white px-2 rounded font-serif font-bold">AI</div>
-          <span className="font-bold tracking-wide uppercase text-sm hidden md:inline">Island Society</span>
+    <div className="flex flex-col h-[100dvh] w-full bg-stone-200 text-stone-800 font-sans overflow-hidden">
+      
+      {/* --- 顶部导航栏 --- */}
+      <header className="shrink-0 h-16 bg-stone-900 text-stone-200 shadow-md px-6 flex justify-between items-center z-30">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-amber-500 rounded flex items-center justify-center font-bold text-black shadow-[0_0_10px_rgba(245,158,11,0.5)]">AI</div>
+          <div>
+            <h1 className="font-bold tracking-wider text-lg leading-none">ISLAND SIM</h1>
+            <p className="text-[10px] text-stone-500 font-mono tracking-widest">SURVIVAL PROTOCOL</p>
+          </div>
         </div>
-        <div className="flex-1 mx-4 overflow-hidden relative h-8 bg-amber-50 rounded border border-amber-100 flex items-center px-3">
-           <span className="text-xs font-bold text-amber-600 mr-2 shrink-0">NEWS:</span>
-           <span className="text-xs text-amber-800 truncate animate-pulse">{envInfo.news}</span>
+
+        {/* 滚动新闻条 */}
+        <div className="flex-1 mx-8 hidden md:flex items-center bg-stone-800/50 rounded-full px-4 py-1.5 border border-stone-700/50">
+           <span className="text-[10px] font-bold text-amber-500 mr-3 shrink-0 tracking-widest">LATEST NEWS</span>
+           <span className="text-xs text-stone-300 truncate animate-pulse font-mono">{envInfo.news}</span>
         </div>
-        <div className="flex items-center gap-2">
-           <div className={`w-2 h-2 rounded-full ${loading ? 'bg-blue-500 animate-ping' : 'bg-green-500'}`}></div>
-           <button onClick={() => setIsPaused(!isPaused)} className="text-xs border px-2 py-1 rounded bg-white hover:bg-stone-50">
+
+        <div className="flex items-center gap-3">
+           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${loading ? 'bg-blue-900/30 border-blue-800 text-blue-400' : 'bg-stone-800 border-stone-700 text-stone-500'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-blue-400 animate-ping' : 'bg-emerald-500'}`}></div>
+              {loading ? "COMPUTING" : "LIVE"}
+           </div>
+           
+           <button onClick={() => setIsPaused(!isPaused)} className="w-8 h-8 flex items-center justify-center rounded-full bg-stone-800 hover:bg-stone-700 transition-colors border border-stone-700 text-stone-300">
              {isPaused ? "▶" : "⏸"}
            </button>
-           <button onClick={handleReset} className="text-xs text-red-500 hover:text-red-700 px-2 font-bold border border-red-200 bg-red-50 rounded h-6 w-6 flex items-center justify-center">↺</button>
+           <button onClick={handleReset} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-900/20 hover:bg-red-900/40 transition-colors border border-red-900/50 text-red-500" title="Reset World">
+             ↺
+           </button>
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* 左栏：环境 */}
-        <aside className="w-64 bg-white border-r border-stone-200 hidden md:flex flex-col p-5 space-y-6">
-           <div>
-             <h2 className="text-[10px] font-bold text-stone-400 uppercase mb-2">Environment</h2>
-             <div className="text-3xl mb-1">🌤 {envInfo.weather}</div>
-             <div className="text-xs text-stone-500">Day {envInfo.day} · {envInfo.time}</div>
-           </div>
-           <div className="pl-3 border-l-2 border-stone-300">
-             <p className="text-xs text-stone-600 italic font-serif leading-relaxed">“{envInfo.desc}”</p>
+        
+        {/* --- 左栏：环境仪表盘 --- */}
+        <aside className="w-72 bg-stone-100 border-r border-stone-300 hidden md:flex flex-col z-10 shadow-lg">
+           <div className="p-6 space-y-6">
+             {/* 天气卡片 */}
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-200">
+               <div className="flex justify-between items-start mb-2">
+                 <span className="text-4xl filter drop-shadow-sm">🌤</span>
+                 <div className="text-right">
+                   <div className="text-2xl font-bold text-stone-800">{envInfo.weather}</div>
+                   <div className="text-xs font-mono text-stone-400 uppercase tracking-widest">Day {envInfo.day} · {envInfo.time}</div>
+                 </div>
+               </div>
+             </div>
+             
+             {/* 环境描写 */}
+             <div className="relative">
+               <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 rounded-full"></div>
+               <div className="pl-4 py-1">
+                 <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Atmosphere</h3>
+                 <p className="text-sm text-stone-600 leading-relaxed font-serif italic">
+                   “{envInfo.desc}”
+                 </p>
+               </div>
+             </div>
+
+             {/* 装饰性数据块 */}
+             <div className="grid grid-cols-2 gap-2 mt-4 opacity-60">
+                <div className="bg-stone-200 h-16 rounded-lg animate-pulse"></div>
+                <div className="bg-stone-200 h-16 rounded-lg animate-pulse delay-75"></div>
+             </div>
            </div>
         </aside>
 
-        {/* 中栏：故事 */}
-        <main className="flex-1 bg-[#fcfaf8] relative flex flex-col min-w-0">
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8">
-            {logs.map((log, i) => (
-              <article key={i} className="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-stone-100">
-                <div className="text-[10px] text-stone-400 font-mono mb-2">LOG #{i+1}</div>
-                <p className="text-base leading-8 text-stone-800 font-serif text-justify">{log}</p>
-              </article>
-            ))}
+        {/* --- 中栏：故事流 (倒序显示) --- */}
+        <main className="flex-1 bg-stone-200 relative flex flex-col min-w-0">
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
+            {logs.length === 0 && (
+              <div className="text-center mt-20 text-stone-400 animate-pulse font-mono">
+                INITIALIZING WORLD SIMULATION...
+              </div>
+            )}
+
+            {/* 这里使用了 [...logs].reverse() 来实现最新的在最上面 */}
+            {[...logs].reverse().map((log, index) => {
+              // 计算原始的序号：总长度 - 当前索引
+              const realIndex = logs.length - index;
+              return (
+                <article key={realIndex} className="max-w-3xl mx-auto group">
+                   <div className="flex gap-4">
+                     {/* 序号列 */}
+                     <div className="flex flex-col items-center pt-2">
+                        <span className="text-[10px] font-mono font-bold text-stone-400 bg-stone-200 px-1">
+                          #{String(realIndex).padStart(3, '0')}
+                        </span>
+                        <div className="w-px h-full bg-stone-300 my-2 group-last:hidden"></div>
+                     </div>
+                     
+                     {/* 内容卡片 */}
+                     <div className="flex-1 bg-white p-6 rounded-xl shadow-sm border border-stone-200/60 hover:shadow-md transition-shadow duration-300">
+                       <p className="text-lg leading-loose text-stone-800 font-serif text-justify">
+                         {log}
+                       </p>
+                     </div>
+                   </div>
+                </article>
+              );
+            })}
+            
+            {/* 底部垫高 */}
             <div className="h-12"></div>
           </div>
+          
+          {/* 顶部阴影遮罩，增加纵深感 */}
+          <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-stone-200/50 to-transparent pointer-events-none"></div>
         </main>
 
-        {/* 右栏：8人状态 + 头像 */}
-        <aside className="w-80 bg-white border-l border-stone-200 flex flex-col z-20">
-          <div className="p-3 border-b border-stone-100 bg-stone-50 text-[10px] font-bold text-stone-400 uppercase text-center">
-            Survivors Status
+        {/* --- 右栏：幸存者名单 --- */}
+        <aside className="w-80 bg-white border-l border-stone-300 flex flex-col z-20 shadow-xl">
+          <div className="p-4 border-b border-stone-200 bg-stone-50/80 backdrop-blur sticky top-0 z-10 flex justify-between items-center">
+            <h2 className="text-xs font-bold text-stone-500 uppercase tracking-widest">Survivors</h2>
+            <span className="text-[10px] bg-stone-200 px-2 py-0.5 rounded-full text-stone-500 font-mono">
+              ONLINE: {agents.length}
+            </span>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-stone-50">
             {agents.map(agent => (
-              <div key={agent.id} className="bg-white border border-stone-200 rounded-lg p-3 shadow-sm flex flex-col gap-2 relative overflow-hidden">
-                <div className="flex justify-between items-start relative z-10">
-                  <div className="flex items-center gap-3">
-                    
-                    {/* 头像容器 - 修复版 */}
-                    <div className="relative w-10 h-10 rounded-full overflow-hidden border border-stone-200 shadow-sm shrink-0 bg-stone-100 flex items-center justify-center">
-                      {agent.avatarUrl ? (
-                        <Image 
-                          src={agent.avatarUrl} 
-                          alt={agent.name}
-                          fill
-                          className="object-cover"
-                          unoptimized // 关键：DiceBear 是外部 SVG，不需要 Next.js 优化
-                          onError={(e) => {
-                            // 图片加载失败时隐藏图片（显示背景色）
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        // 如果没有 URL，显示名字首字
-                        <span className="text-xs font-bold text-stone-400">{agent.name[0]}</span>
-                      )}
-                    </div>
+              <div key={agent.id} className="bg-white border border-stone-200 rounded-xl p-3 shadow-sm hover:border-amber-300 transition-colors group">
+                
+                {/* 头部：头像与基础信息 */}
+                <div className="flex items-start gap-3 mb-3">
+                  {/* 头像圈 */}
+                  <div className="relative w-12 h-12 rounded-full border-2 border-white shadow-md shrink-0 bg-stone-100 overflow-hidden ring-2 ring-stone-100 group-hover:ring-amber-200 transition-all">
+                    {agent.avatarUrl ? (
+                      <Image 
+                        src={agent.avatarUrl} 
+                        alt={agent.name}
+                        fill
+                        className="object-cover"
+                        unoptimized // 必须加这个
+                        onError={(e) => {
+                           (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-stone-300 font-bold text-xl">
+                        {agent.name[0]}
+                      </div>
+                    )}
+                  </div>
 
-                    <div>
-                        <div className="font-bold text-sm text-stone-800">{agent.name}</div>
-                        <div className="text-[10px] font-normal text-stone-500">{agent.job}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-stone-800 truncate">{agent.name}</h3>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${agent.hp > 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                        HP {agent.hp}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 truncate">{agent.job}</p>
+                    
+                    {/* 饥饿度条 */}
+                    <div className="w-full h-1 bg-stone-100 rounded-full mt-2 overflow-hidden">
+                       <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.max(0, 100 - agent.hunger)}%` }}></div>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${agent.hp>50?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>HP {agent.hp}</span>
                 </div>
-                
-                <div className="text-[10px] text-stone-400 pl-[3.25rem]">📍 {agent.locationName}</div>
-                <div className="text-xs text-stone-600 bg-stone-50 p-2 rounded border border-stone-100 italic ml-[3.25rem]">
-                  "{agent.actionLog}"
+
+                {/* 底部：位置与动作 */}
+                <div className="bg-stone-50 rounded-lg p-2 space-y-1.5">
+                   <div className="flex items-center gap-1.5 text-[10px] text-stone-400 uppercase font-bold tracking-wider">
+                     <span>📍 {agent.locationName}</span>
+                   </div>
+                   <div className="text-xs text-stone-600 italic leading-tight">
+                     “{agent.actionLog}”
+                   </div>
+                   
+                   {/* 简单的背包展示 */}
+                   {agent.inventory.length > 0 && (
+                     <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-stone-200/50">
+                       {agent.inventory.map((item, idx) => (
+                         <span key={idx} className="text-[9px] px-1 py-0.5 bg-white border border-stone-200 rounded text-stone-500">
+                           {item}
+                         </span>
+                       ))}
+                     </div>
+                   )}
                 </div>
+
               </div>
             ))}
           </div>
