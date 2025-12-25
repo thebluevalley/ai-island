@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 // --- 类型定义 ---
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; };
 type NPC = { id: string; name: string; role: string; currentTask: string; };
-type Building = { type: string; name: string; status: string; progress: number; maxProgress: number; x: number; y: number; };
+type Building = { type: string; name: string; status: string; progress: number; maxProgress: number; x: number; y: number; desc?: string; };
 type Resources = { wood: number; stone: number; food: number; medicine: number; };
 
 // --- 静态配置 ---
@@ -34,8 +34,9 @@ export default function Home() {
   const [paused, setPaused] = useState(false);
   
   // 视图控制
-  const [rightTab, setRightTab] = useState<'ai' | 'npc'>('ai'); // 右侧栏内部切换
-  const [mobileView, setMobileView] = useState<'map' | 'control' | 'roster'>('map'); // 手机端主视图切换
+  const [rightTab, setRightTab] = useState<'ai' | 'npc'>('ai');
+  // 移动端视图状态：logs (最左), map, control, roster
+  const [mobileView, setMobileView] = useState<'logs' | 'map' | 'control' | 'roster'>('logs');
 
   const fetchData = async () => {
     if (loading || paused) return;
@@ -69,36 +70,31 @@ export default function Home() {
 
   const { agents, npcs, buildings, globalResources, logs, weather } = worldData;
 
-  // --- 组件化：左侧栏 (控制 & 资源) ---
+  // --- 数据计算 ---
+  // 待执行命令清单 (蓝图 + NPC任务)
+  const pendingBuilds = buildings.filter((b: Building) => b.status === 'blueprint');
+  const activeBuilds = buildings.filter((b: Building) => b.status === 'active');
+  const busyNpcs = npcs.filter((n: NPC) => n.currentTask && n.currentTask !== '等待指令');
+
+  // --- 组件：建设控制面板 ---
   const ControlPanel = () => (
     <div className="flex flex-col h-full bg-[#f5f5f5]">
-      {/* 资源列表 (紧凑版) */}
       <div className="p-4 bg-white border-b border-stone-200">
-        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Resources</h2>
-        <div className="space-y-2">
-           <div className="flex justify-between items-center text-sm border-b border-stone-100 pb-1">
-             <span className="text-stone-600">🪵 木材</span> <span className="font-mono font-bold text-blue-600">{globalResources.wood}</span>
-           </div>
-           <div className="flex justify-between items-center text-sm border-b border-stone-100 pb-1">
-             <span className="text-stone-600">🪨 石料</span> <span className="font-mono font-bold text-stone-600">{globalResources.stone}</span>
-           </div>
-           <div className="flex justify-between items-center text-sm border-b border-stone-100 pb-1">
-             <span className="text-stone-600">🍞 食物</span> <span className="font-mono font-bold text-emerald-600">{globalResources.food}</span>
-           </div>
-           <div className="flex justify-between items-center text-sm">
-             <span className="text-stone-600">💊 药品</span> <span className="font-mono font-bold text-red-500">{globalResources.medicine}</span>
-           </div>
+        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Warehouse</h2>
+        <div className="grid grid-cols-2 gap-3">
+           <div className="flex justify-between text-sm border-b border-stone-100 pb-1"><span className="text-stone-600">🪵 木材</span> <span className="font-mono font-bold text-blue-600">{globalResources.wood}</span></div>
+           <div className="flex justify-between text-sm border-b border-stone-100 pb-1"><span className="text-stone-600">🪨 石料</span> <span className="font-mono font-bold text-stone-600">{globalResources.stone}</span></div>
+           <div className="flex justify-between text-sm border-b border-stone-100 pb-1"><span className="text-stone-600">🍞 食物</span> <span className="font-mono font-bold text-emerald-600">{globalResources.food}</span></div>
+           <div className="flex justify-between text-sm"><span className="text-stone-600">💊 药品</span> <span className="font-mono font-bold text-red-500">{globalResources.medicine}</span></div>
         </div>
       </div>
-
-      {/* 建设菜单 */}
       <div className="flex-1 p-4 overflow-y-auto bg-[#fafaf9]">
-        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Construction</h2>
+        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Blueprint Menu</h2>
         <div className="space-y-2">
           {BUILD_OPTIONS.map(opt => (
-            <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-full bg-white p-2.5 rounded border border-stone-300 shadow-sm active:scale-95 transition-all text-left group">
+            <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-full bg-white p-3 rounded border border-stone-300 shadow-sm active:scale-95 transition-all text-left group">
               <div className="flex justify-between items-center mb-0.5">
-                <span className="font-bold text-stone-700 text-sm">{opt.name}</span>
+                <span className="font-bold text-stone-700 text-sm group-hover:text-blue-600">{opt.name}</span>
                 <span className="text-[9px] bg-stone-100 px-1 rounded text-stone-400">T1</span>
               </div>
               <div className="text-[10px] text-stone-400 font-mono">{opt.cost}</div>
@@ -106,28 +102,115 @@ export default function Home() {
           ))}
         </div>
       </div>
-      
-      {/* 重置按钮 */}
       <div className="p-4 border-t border-stone-200 bg-stone-100 mt-auto">
-        <button onClick={handleReset} className="w-full py-3 bg-red-50 text-red-600 rounded border border-red-200 font-bold active:bg-red-100 text-xs tracking-wider">
-          ☢ REBOOT SYSTEM
-        </button>
+        <button onClick={handleReset} className="w-full py-3 bg-red-50 text-red-600 rounded border border-red-200 font-bold active:bg-red-100 text-xs tracking-wider">☢ REBOOT SYSTEM</button>
       </div>
     </div>
   );
 
-  // --- 组件化：右侧栏 (人员名单) ---
-  const RosterPanel = () => (
-    <div className="flex flex-col h-full bg-white shadow-xl">
-      <div className="flex border-b border-stone-200 shrink-0">
-         <button onClick={()=>setRightTab('ai')} className={`flex-1 py-3 text-xs font-bold uppercase ${rightTab==='ai'?'bg-white text-blue-600 border-b-2 border-blue-600':'bg-stone-50 text-stone-400'}`}>
-           Elites ({agents.length})
-         </button>
-         <button onClick={()=>setRightTab('npc')} className={`flex-1 py-3 text-xs font-bold uppercase ${rightTab==='npc'?'bg-white text-emerald-600 border-b-2 border-emerald-600':'bg-stone-50 text-stone-400'}`}>
-           Drones ({npcs.length})
-         </button>
+  // --- 组件：地图与指令面板 ---
+  const MapDashboard = () => (
+    <div className="flex flex-col h-full bg-[#e5e5e5]">
+      {/* 顶部：系统指令概览 */}
+      <div className="bg-stone-800 text-stone-300 p-4 shadow-md shrink-0">
+        <div className="flex justify-between items-center mb-3">
+           <h2 className="text-xs font-bold text-amber-500 uppercase tracking-widest animate-pulse">System Command</h2>
+           <span className="text-[10px] font-mono bg-stone-700 px-2 py-0.5 rounded text-stone-400">Turn {worldData.turn}</span>
+        </div>
+        
+        {/* 指令清单 */}
+        <div className="space-y-2 text-xs font-mono">
+           <div className="flex gap-2">
+              <span className="text-stone-500">PHASE:</span>
+              <span className="text-stone-200">{pendingBuilds.length > 0 ? "CONSTRUCTION" : "IDLE / GATHERING"}</span>
+           </div>
+           <div className="flex gap-2 items-start">
+              <span className="text-stone-500">QUEUE:</span>
+              <div className="flex-1">
+                 {pendingBuilds.length === 0 && busyNpcs.length === 0 && <span className="text-stone-500 italic">No pending commands.</span>}
+                 {pendingBuilds.map((b: Building, i: number) => (
+                    <div key={i} className="text-blue-400">Build [{b.name}] @ {b.x},{b.y}</div>
+                 ))}
+                 {busyNpcs.slice(0, 3).map((n: NPC, i: number) => (
+                    <div key={i} className="text-emerald-400">{n.name}: {n.currentTask}</div>
+                 ))}
+                 {busyNpcs.length > 3 && <div className="text-stone-500">...and {busyNpcs.length - 3} more</div>}
+              </div>
+           </div>
+        </div>
       </div>
 
+      {/* 地图区域 */}
+      <div className="flex-1 p-4 overflow-y-auto">
+         <div className="bg-stone-300 p-1 rounded shadow-inner">
+           <div className="grid grid-cols-3 gap-1 aspect-square">
+              {['礁石','浅滩','沉船','椰林','广场','溪流','密林','矿山','高塔'].map((loc, i) => {
+                 const x = Math.floor(i / 3);
+                 const y = i % 3;
+                 const b = buildings.find((b: Building) => b.x === x && b.y === y);
+                 const count = agents.filter((a: Agent) => a.locationName?.includes(loc)).length;
+                 
+                 return (
+                   <div key={i} className="bg-stone-200 rounded border border-stone-300 flex flex-col items-center justify-center relative active:bg-white transition-colors">
+                      <span className="text-[10px] font-bold text-stone-500 z-10">{loc}</span>
+                      {b && (
+                        <div className="absolute bottom-2 w-3/4 flex flex-col items-center gap-0.5 z-10">
+                           <span className="text-[8px] leading-none font-bold text-stone-600 bg-white/80 px-1 rounded scale-90">{b.name}</span>
+                           <div className="h-1 w-full bg-stone-400/50 rounded-full overflow-hidden">
+                              <div className={`h-full ${b.status==='active'?'bg-emerald-500':'bg-amber-400'}`} style={{width: `${(b.progress/b.maxProgress)*100}%`}}></div>
+                           </div>
+                        </div>
+                      )}
+                      {count > 0 && <div className="absolute top-1 right-1 w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm border border-white">{count}</div>}
+                   </div>
+                 )
+              })}
+           </div>
+         </div>
+         
+         {/* 建筑统计文字 */}
+         <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="bg-white p-3 rounded border border-stone-200 shadow-sm">
+               <div className="text-[10px] text-stone-400 uppercase">Active Buildings</div>
+               <div className="text-lg font-bold text-stone-700">{activeBuilds.length}</div>
+            </div>
+            <div className="bg-white p-3 rounded border border-stone-200 shadow-sm">
+               <div className="text-[10px] text-stone-400 uppercase">Blueprints</div>
+               <div className="text-lg font-bold text-blue-600">{pendingBuilds.length}</div>
+            </div>
+         </div>
+      </div>
+    </div>
+  );
+
+  // --- 组件：日志列表 ---
+  const LogPanel = () => (
+    <div className="flex flex-col h-full bg-[#e5e5e5]">
+      <div className="h-12 bg-white border-b border-stone-200 flex items-center px-4 justify-between shrink-0 shadow-sm">
+         <span className="font-bold text-sm text-stone-700 uppercase">System Logs</span>
+         <span className="text-[10px] font-mono text-stone-400">LATEST TOP</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-safe">
+         {logs.slice().reverse().map((log: string, i: number) => (
+           <div key={i} className={`p-4 rounded border ${i===0 ? 'bg-white shadow-md border-l-4 border-l-blue-500 border-y-stone-200 border-r-stone-200' : 'bg-[#efefef] border-stone-200 text-stone-600'}`}>
+              <div className="flex justify-between items-start mb-1">
+                 <span className="text-[9px] font-mono text-stone-400">LOG #{String(logs.length - i).padStart(3,'0')}</span>
+                 {i===0 && <span className="text-[8px] bg-blue-100 text-blue-600 px-1 rounded font-bold">NEW</span>}
+              </div>
+              <p className="text-sm leading-6 text-stone-800 font-serif text-justify">{log}</p>
+           </div>
+         ))}
+      </div>
+    </div>
+  );
+
+  // --- 组件：人员名单 ---
+  const RosterPanel = () => (
+    <div className="flex flex-col h-full bg-white">
+      <div className="flex border-b border-stone-200 shrink-0">
+         <button onClick={()=>setRightTab('ai')} className={`flex-1 py-3 text-xs font-bold uppercase ${rightTab==='ai'?'bg-white text-blue-600 border-b-2 border-blue-600':'bg-stone-50 text-stone-400'}`}>Elites</button>
+         <button onClick={()=>setRightTab('npc')} className={`flex-1 py-3 text-xs font-bold uppercase ${rightTab==='npc'?'bg-white text-emerald-600 border-b-2 border-emerald-600':'bg-stone-50 text-stone-400'}`}>Drones</button>
+      </div>
       <div className="flex-1 overflow-y-auto p-3 bg-stone-50 space-y-2">
          {rightTab === 'ai' ? agents.map((agent: Agent) => (
            <div key={agent.id} className="bg-white p-2.5 rounded border border-stone-200 shadow-sm flex gap-3">
@@ -149,13 +232,9 @@ export default function Home() {
                  <div className="font-bold text-xs text-stone-700">{npc.name}</div>
                  <div className="text-[10px] text-stone-400 uppercase font-bold">{npc.role}</div>
               </div>
-              <div className="text-[10px] font-mono bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-emerald-700">
-                 {npc.currentTask}
-              </div>
+              <div className="text-[10px] font-mono bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-emerald-700">{npc.currentTask}</div>
            </div>
          ))}
-         {/* 底部留白防止手机端被导航栏遮挡 */}
-         <div className="h-16 md:hidden"></div>
       </div>
     </div>
   );
@@ -163,92 +242,45 @@ export default function Home() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#e5e5e5] text-stone-800 font-sans overflow-hidden">
       
-      {/* 1. 顶部状态栏 (通用) */}
-      <header className="shrink-0 h-12 bg-stone-800 text-stone-200 flex items-center px-4 justify-between shadow-md z-20">
-        <div className="flex items-center gap-2">
-           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-           <span className="font-bold tracking-widest uppercase text-xs md:text-sm">Island Sim v3.5</span>
-        </div>
-        <div className="flex gap-4 text-[10px] md:text-xs font-mono opacity-80">
-          <span>DAY {String(worldData.turn).padStart(3,'0')}</span>
-          <span className="text-amber-400 hidden md:inline">{weather}</span>
-          <span>{agents.length} AGENTS</span>
-        </div>
-      </header>
-
-      {/* 2. 桌面端三栏布局 / 移动端单视图 */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* 桌面端布局 (保持 Dashboard 风格) */}
+      <div className="hidden md:flex flex-1 overflow-hidden">
+        {/* 左: 建设 */}
+        <aside className="w-64 border-r border-stone-300 z-10"><ControlPanel /></aside>
         
-        {/* 左栏：桌面端常驻 / 移动端 Tab 1 */}
-        <aside className={`
-          ${mobileView === 'control' ? 'flex' : 'hidden'} 
-          md:flex md:w-64 border-r border-stone-300 w-full z-10
-        `}>
-          <ControlPanel />
-        </aside>
-
-        {/* 中栏：桌面端常驻 / 移动端 Tab 2 */}
-        <main className={`
-          ${mobileView === 'map' ? 'flex' : 'hidden'} 
-          md:flex flex-1 flex-col min-w-0 bg-[#e5e5e5] relative z-0
-        `}>
-          {/* 九宫格地图 */}
-          <div className="p-4 bg-stone-200 border-b border-stone-300 shadow-inner">
-             <div className="grid grid-cols-3 gap-2 max-w-lg mx-auto aspect-[3/1.2]">
-                {['礁石','浅滩','沉船','椰林','广场','溪流','密林','矿山','高塔'].map((loc, i) => {
-                   const x = Math.floor(i / 3);
-                   const y = i % 3;
-                   const b = buildings.find((b: Building) => b.x === x && b.y === y);
-                   const count = agents.filter((a: Agent) => a.locationName?.includes(loc)).length;
-                   
-                   return (
-                     <div key={i} className="bg-stone-300 rounded border border-stone-400/30 flex flex-col items-center justify-center relative active:bg-white transition-colors">
-                        <span className="text-[10px] font-bold text-stone-500 z-10">{loc}</span>
-                        {b && (
-                          <div className="absolute bottom-1 w-3/4 h-1 bg-stone-400/50 rounded-full overflow-hidden">
-                             <div className={`h-full ${b.status==='active'?'bg-emerald-500':'bg-amber-400'}`} style={{width: `${(b.progress/b.maxProgress)*100}%`}}></div>
-                          </div>
-                        )}
-                        {count > 0 && <div className="absolute top-1 right-1 w-4 h-4 bg-blue-600 text-white text-[9px] rounded-full flex items-center justify-center shadow-sm border border-[#e5e5e5]">{count}</div>}
-                     </div>
-                   )
-                })}
-             </div>
-          </div>
-
-          {/* 日志 */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20 md:pb-4">
-             {logs.slice().reverse().map((log: string, i: number) => (
-               <div key={i} className={`p-3.5 rounded border ${i===0 ? 'bg-white shadow-sm border-stone-300' : 'bg-[#efefef] border-stone-200 opacity-80'}`}>
-                  <p className="text-sm leading-6 text-stone-800 font-serif text-justify">{log}</p>
-               </div>
-             ))}
-          </div>
+        {/* 中: 地图 + 日志 */}
+        <main className="flex-1 flex flex-col min-w-0 bg-[#e5e5e5] z-0">
+           {/* 桌面端把地图放上面作为概览 */}
+           <div className="h-72 border-b border-stone-300"><MapDashboard /></div>
+           <div className="flex-1 relative"><LogPanel /></div>
         </main>
-
-        {/* 右栏：桌面端常驻 / 移动端 Tab 3 */}
-        <aside className={`
-          ${mobileView === 'roster' ? 'flex' : 'hidden'} 
-          md:flex md:w-72 border-l border-stone-300 w-full z-10
-        `}>
-          <div className="flex-1 w-full">
-            <RosterPanel />
-          </div>
-        </aside>
-
+        
+        {/* 右: 人员 */}
+        <aside className="w-72 border-l border-stone-300 z-10"><RosterPanel /></aside>
       </div>
 
-      {/* 3. 移动端底部导航栏 (仅手机显示) */}
-      <nav className="md:hidden h-14 bg-white border-t border-stone-200 flex justify-around items-center shrink-0 z-50 pb-safe">
-        <button onClick={() => setMobileView('control')} className={`flex flex-col items-center gap-1 p-2 ${mobileView==='control'?'text-blue-600':'text-stone-400'}`}>
-          <span className="text-lg">🛠</span>
+      {/* 移动端布局 (单视图切换) */}
+      <div className="md:hidden flex-1 overflow-hidden relative bg-[#e5e5e5]">
+        {mobileView === 'logs' && <LogPanel />}
+        {mobileView === 'map' && <MapDashboard />}
+        {mobileView === 'control' && <ControlPanel />}
+        {mobileView === 'roster' && <RosterPanel />}
+      </div>
+
+      {/* 移动端底部导航栏 (4栏) */}
+      <nav className="md:hidden h-14 bg-white border-t border-stone-200 flex justify-around items-center shrink-0 z-50 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <button onClick={() => setMobileView('logs')} className={`flex flex-col items-center gap-0.5 p-2 w-16 transition-colors ${mobileView==='logs'?'text-blue-600':'text-stone-400'}`}>
+          <span className="text-lg">📄</span>
+          <span className="text-[10px] font-bold">日志</span>
+        </button>
+        <button onClick={() => setMobileView('map')} className={`flex flex-col items-center gap-0.5 p-2 w-16 transition-colors ${mobileView==='map'?'text-blue-600':'text-stone-400'}`}>
+          <span className="text-lg">🗺️</span>
+          <span className="text-[10px] font-bold">地图</span>
+        </button>
+        <button onClick={() => setMobileView('control')} className={`flex flex-col items-center gap-0.5 p-2 w-16 transition-colors ${mobileView==='control'?'text-blue-600':'text-stone-400'}`}>
+          <span className="text-lg">🛠️</span>
           <span className="text-[10px] font-bold">建设</span>
         </button>
-        <button onClick={() => setMobileView('map')} className={`flex flex-col items-center gap-1 p-2 ${mobileView==='map'?'text-blue-600':'text-stone-400'}`}>
-          <span className="text-lg">🗺</span>
-          <span className="text-[10px] font-bold">概览</span>
-        </button>
-        <button onClick={() => setMobileView('roster')} className={`flex flex-col items-center gap-1 p-2 ${mobileView==='roster'?'text-blue-600':'text-stone-400'}`}>
+        <button onClick={() => setMobileView('roster')} className={`flex flex-col items-center gap-0.5 p-2 w-16 transition-colors ${mobileView==='roster'?'text-blue-600':'text-stone-400'}`}>
           <span className="text-lg">👥</span>
           <span className="text-[10px] font-bold">人员</span>
         </button>
