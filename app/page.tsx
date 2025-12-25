@@ -18,13 +18,11 @@ const BUILD_OPTIONS = [
   { type: "Tower", name: "瞭望塔", cost: "木120 石80" }
 ];
 
-// --- 符号化头像组件 (修复：添加 name 属性定义) ---
-// 增加 name?: string 使得传入 name 不会报错，并将其用于 title 属性
+// --- 符号化头像组件 ---
 const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
   let Icon = Users;
   let color = "bg-stone-400";
 
-  // 根据职业映射图标和颜色
   if (job.includes("消防") || job.includes("保安")) { Icon = Shield; color = "bg-blue-600"; }
   else if (job.includes("医生") || job.includes("护士")) { Icon = Stethoscope; color = "bg-rose-500"; }
   else if (job.includes("建筑") || job.includes("工")) { Icon = Hammer; color = "bg-amber-600"; }
@@ -35,7 +33,6 @@ const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
   else if (job.includes("占卜")) { Icon = Zap; color = "bg-purple-600"; }
 
   return (
-    // 添加 title={name}，鼠标悬停时可以看到名字
     <div title={name} className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 border border-white/20`}>
       <Icon size={20} strokeWidth={2.5} />
     </div>
@@ -113,7 +110,7 @@ export default function Home() {
         </div>
       </div>
       <div className="flex-1 p-4 overflow-y-auto bg-[#fafaf9]">
-        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Construction</h2>
+        <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Blueprint Menu</h2>
         <div className="space-y-2">
           {BUILD_OPTIONS.map(opt => (
             <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-full bg-white p-3 rounded-lg border border-stone-200 shadow-sm active:scale-95 transition-all text-left flex justify-between items-center">
