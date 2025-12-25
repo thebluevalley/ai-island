@@ -5,214 +5,126 @@ import { World } from '@/lib/models';
 
 export const maxDuration = 60;
 
-const MAP_LOCATIONS = {
-  "0,0": "北岸礁石", "0,1": "浅滩", "0,2": "沉船遗迹",
-  "1,0": "椰林",   "1,1": "中央广场", "1,2": "淡水溪流",
-  "2,0": "密林深处",   "2,1": "矿石山坡", "2,2": "瞭望塔"
-};
-const getLocName = (x, y) => MAP_LOCATIONS[`${x},${y}`] || "荒野";
-
-const SPAWN_RULES = {
-  "1,0": ["椰子", "树枝"], "0,1": ["蛤蜊", "漂流木"], 
-  "1,2": ["淡水鱼", "鹅卵石"], "2,0": ["蘑菇", "野果"], 
-  "2,1": ["石块", "燧石"], "0,2": ["废铁片", "塑料布"] 
+// --- 静态数据 ---
+const MAP_NAMES = { "0,0":"礁石","0,1":"浅滩","0,2":"沉船","1,0":"椰林","1,1":"广场","1,2":"溪流","2,0":"密林","2,1":"矿山","2,2":"高塔" };
+const BUILDING_COSTS = {
+  "House": { wood: 50, stone: 0, time: 20, name: "居住屋" },
+  "Warehouse": { wood: 80, stone: 20, time: 30, name: "大仓库" },
+  "Clinic": { wood: 100, stone: 50, time: 50, name: "诊所" },
+  "Kitchen": { wood: 60, stone: 30, time: 40, name: "野战厨房" },
+  "Tower": { wood: 120, stone: 80, time: 60, name: "瞭望塔" }
 };
 
-// --- 更换为 Notion 手绘风格 (黑白线条，非常清晰) ---
-const AVATAR_BASE = "https://api.dicebear.com/9.x/notionists/svg";
+const cleanJson = (str) => str.replace(/```json|```/g, '').trim();
 
 export async function POST() {
   await connectDB();
   
-  // --- 客户端初始化 ---
-  const sfClient = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
-  
+  // 初始化客户端 (8 Key)
+  const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  const sfStory = new OpenAI({ apiKey: process.env.SF_API_KEY_4 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
-  const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
-  
+  const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" }); // 议会
+
   let world = await World.findOne();
-  
-  // --- 初始化世界 (配置 Notion 头像) ---
-  if (!world || !world.agents || world.agents.length < 8) {
-     if(world) await World.deleteMany({});
-     world = await World.create({
-        turn: 1, weather: "晴朗", mapResources: {}, mapBuildings: {"1,1":{name:"营地",progress:0,max:100}},
-        agents: [
-            // seed 决定脸型，flip 翻转方向增加变化
-            { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Felix&flip=true` },
-            { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Lydia` },
-            { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Robert&glassesProbability=100` },
-            { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Sam` },
-            { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Bear&beardProbability=100` },
-            { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Jocelyn` },
-            { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Milo` },
-            { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Destiny` }
-        ],
-        logs: ["【序幕】生存实验开始..."]
-     });
-  }
+  if (!world) return NextResponse.json({error: "No world"});
 
-  const timeSlots = ["清晨", "上午", "正午", "下午", "黄昏", "深夜"];
-  const timeNow = timeSlots[(world.turn - 1) % 6];
-  const dayCount = Math.floor((world.turn - 1) / 6) + 1;
-
-  // --- STEP 0: 资源刷新 ---
-  if (Math.random() < 0.4) {
-    const coords = Object.keys(SPAWN_RULES);
-    const rC = coords[Math.floor(Math.random() * coords.length)];
-    const item = SPAWN_RULES[rC][Math.floor(Math.random() * SPAWN_RULES[rC].length)];
-    const items = world.mapResources[rC] || [];
-    if (items.length < 5) { 
-      items.push(item);
-      world.mapResources = { ...world.mapResources, [rC]: items };
+  // 1. NPC 逻辑
+  let npcLogs = [];
+  world.npcs.forEach(npc => {
+    const activeBlueprint = world.buildings.find(b => b.status === "blueprint");
+    if (activeBlueprint && npc.role === "worker") {
+      activeBlueprint.progress = Math.min(activeBlueprint.maxProgress, activeBlueprint.progress + 5);
+      if (activeBlueprint.progress >= activeBlueprint.maxProgress) {
+        activeBlueprint.status = "active";
+        npcLogs.push(`工人建成${activeBlueprint.name}`);
+      }
+      npc.currentTask = `建设 ${activeBlueprint.name}`;
+    } else {
+      if (Math.random() > 0.5) { world.globalResources.wood += 2; npc.currentTask = "伐木"; }
+      else { world.globalResources.food += 2; npc.currentTask = "采集"; }
     }
-  }
-
-  // --- STEP 1: 环境 (SiliconFlow) ---
-  let envData = { description: world.envDescription, weather: world.weather };
-  try {
-    const res = await sfClient.chat.completions.create({
-      model: "Qwen/Qwen2.5-7B-Instruct",
-      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。JSON: {"weather":"", "description":""}` }],
-      response_format: { type: "json_object" }
-    });
-    envData = JSON.parse(res.choices[0].message.content);
-  } catch(e) {}
-
-  // --- STEP 2: 角色决策 (8b-instant) ---
-  const getInfo = (agent) => {
-    const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
-    const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}`).join(", ");
-    return `位置:${getLocName(agent.x,agent.y)} 地上:[${ground}] 身边:[${people}] 背包:[${agent.inventory}]`;
-  };
-
-  const getPrompt = (agent) => `
-    你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
-    环境: ${envData.description}。
-    感知: ${getInfo(agent)}
-    JSON: {"action": "类型", "target": "目标", "say": "台词"}
-  `;
-
-  const callActors = (client, list) => Promise.all(list.map(a => 
-    client.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [{role:"user", content: getPrompt(a)}],
-      response_format: { type: "json_object" }
-    }).then(r => JSON.parse(r.choices[0].message.content)).catch(()=>({action:"TALK",target:"...",say:"..."}))
-  ));
-
-  const [act1, act2, act3, act4] = await Promise.all([
-    callActors(groq1, world.agents.slice(0,2)),
-    callActors(groq2, world.agents.slice(2,4)),
-    callActors(groq3, world.agents.slice(4,6)),
-    callActors(groq4, world.agents.slice(6,8))
-  ]);
-  const rawActions = [...act1, ...act2, ...act3, ...act4];
-
-  // --- STEP 3: 裁判 (Groq 1) ---
-  let refereeUpdates = [];
-  try {
-      const refereeRes = await groq1.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        messages: [{ 
-          role: "user", 
-          content: `
-            裁判。判定结果。
-            意图: ${JSON.stringify(world.agents.map((a,i) => ({
-                id: a.id, name: a.name, job: a.job, 
-                action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
-            })))}
-            JSON: { "updates": [{"id": 0, "log": "...", "hp_change": 0}, ...] }
-          ` 
-        }],
-        response_format: { type: "json_object" }
-      });
-      const json = JSON.parse(refereeRes.choices[0].message.content);
-      refereeUpdates = json.updates || json.results || [];
-      if (refereeUpdates.length < 8) {
-          world.agents.forEach(a => {
-              if(!refereeUpdates.find(u=>u.id===a.id)) refereeUpdates.push({id:a.id, log:rawActions[a.id].say, hp_change:0});
-          });
-      }
-  } catch(e) {
-      refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
-  }
-
-  // --- STEP 4: 执行 ---
-  refereeUpdates.forEach(u => {
-      const agent = world.agents.find(a => a.id === u.id);
-      const rawAct = rawActions[u.id];
-      if (!agent) return;
-
-      agent.hp = Math.max(0, Math.min(100, agent.hp + (u.hp_change || 0)));
-      agent.actionLog = u.log || rawAct.say;
-      
-      const coord = `${agent.x},${agent.y}`;
-      if (rawAct.action === "MOVE") {
-         const moves = [[0,1], [0,-1], [1,0], [-1,0]];
-         const m = moves[Math.floor(Math.random()*moves.length)];
-         agent.x = Math.max(0, Math.min(2, agent.x+m[0]));
-         agent.y = Math.max(0, Math.min(2, agent.y+m[1]));
-         agent.locationName = getLocName(agent.x, agent.y);
-      }
-      if (rawAct.action === "PICKUP" && rawAct.target) {
-          const ground = world.mapResources[coord] || [];
-          const idx = ground.findIndex(i=>i.includes(rawAct.target));
-          if (idx > -1) {
-              ground.splice(idx, 1);
-              agent.inventory.push(ground[idx]);
-              world.mapResources[coord] = ground;
-          }
-      }
-      if (rawAct.action === "EAT") {
-          const idx = agent.inventory.findIndex(i=>i.includes(rawAct.target));
-          if (idx > -1) {
-              agent.inventory.splice(idx, 1);
-              agent.hunger = Math.max(0, agent.hunger - 30);
-              agent.hp = Math.min(100, agent.hp + 5);
-          }
-      }
-      agent.hunger = Math.min(100, agent.hunger + 3);
   });
 
-  // --- STEP 5: 叙事 & 新闻 (SiliconFlow) ---
-  const [judgeRes, socialRes] = await Promise.all([
-      sfClient.chat.completions.create({
-        model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{ role: "user", content: `写荒岛小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
-        response_format: { type: "json_object" }
-      }),
-      sfClient.chat.completions.create({
-        model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{ role: "user", content: `生成社会新闻: ${JSON.stringify(refereeUpdates)}。返回 JSON: {"news": "..."}` }],
-        response_format: { type: "json_object" }
-      })
+  // 2. 议会逻辑
+  let councilLog = "";
+  if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 150 && Math.random() < 0.3) {
+     try {
+       const res = await groq4.chat.completions.create({
+         model: "llama-3.3-70b-versatile",
+         messages: [{ role: "user", content: `资源充足。现有建筑:${world.buildings.map(b=>b.name).join(",")}. 决定下一个建筑(House/Warehouse/Clinic/Kitchen/Tower). JSON:{"decision":"...","reason":"..."}` }],
+         response_format: { type: "json_object" }
+       });
+       const council = JSON.parse(res.choices[0].message.content);
+       const cost = BUILDING_COSTS[council.decision] || BUILDING_COSTS["House"];
+       world.globalResources.wood -= cost.wood;
+       world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time });
+       councilLog = `议会批准建造${cost.name}`;
+     } catch(e) { councilLog = `议会休会: ${e.message}`; }
+  }
+
+  // 3. AI 决策
+  const getPrompt = (agent) => `你叫${agent.name},职业${agent.job}. HP${agent.hp}. JSON:{"action":"WORK/REST", "say":"..."}`;
+  const callAI = (client, list) => Promise.all(list.map(a => client.chat.completions.create({
+      model: "llama-3.1-8b-instant", messages: [{role:"user", content: getPrompt(a)}], response_format: { type: "json_object" }
+    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({action:"ERR", say: e.message}))
+  ));
+  
+  const [res1, res2, res3] = await Promise.all([
+    callAI(groq1, world.agents.slice(0, 3)),
+    callAI(groq2, world.agents.slice(3, 6)),
+    callAI(groq3, world.agents.slice(6, 10))
   ]);
+  const allActions = [...res1, ...res2, ...res3];
+  
+  allActions.forEach((act, i) => {
+    const agent = world.agents[i];
+    agent.actionLog = act.say;
+    if (act.action === "WORK") agent.hunger += 2;
+  });
 
-  const storyData = JSON.parse(judgeRes.choices[0].message.content);
-  const socialData = JSON.parse(socialRes.choices[0].message.content);
+  // 4. 叙事生成 (直接透传错误)
+  const timeNow = ["晨","午","昏","夜"][(world.turn - 1) % 4];
+  let envData = { weather: world.weather, desc: world.envDescription };
+  let story = "";
 
+  try {
+    // 环境
+    const r1 = await sfEnv.chat.completions.create({
+      model: "Qwen/Qwen2.5-7B-Instruct",
+      messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 生成环境(30字). JSON:{"weather":"...","desc":"..."}`}],
+      response_format: { type: "json_object" }
+    });
+    envData = JSON.parse(cleanJson(r1.choices[0].message.content));
+
+    // 故事
+    const r2 = await sfStory.chat.completions.create({
+       model: "Qwen/Qwen2.5-7B-Instruct",
+       messages: [{role:"user", content: `写300字小说. 环境:${envData.desc}. 事件:${councilLog},${npcLogs.join(",")}. JSON:{"story":"..."}`}],
+       response_format: { type: "json_object" }
+     });
+     story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
+  } catch(e) {
+     // --- 关键修改：直接显示错误信息 ---
+     console.error("AI Error:", e);
+     story = `[SYSTEM ERROR] AI 响应超时或 Key 配额不足。\n调试信息: ${e.message}`;
+  }
+
+  // 保存
   world.turn += 1;
   world.weather = envData.weather;
-  world.envDescription = envData.description;
-  world.socialNews = socialData.news;
-  world.logs.push(storyData.story || "...");
+  world.envDescription = envData.desc;
+  world.socialNews = councilLog || "无重大决议";
+  world.logs.push(story);
   if(world.logs.length > 50) world.logs.shift();
-  world.markModified('mapResources');
-  world.markModified('mapBuildings');
+  
+  world.markModified('buildings');
   world.markModified('agents');
-  world.markModified('logs');
+  world.markModified('npcs');
+  world.markModified('globalResources');
+  
   await world.save();
-
   return NextResponse.json({ success: true, world });
 }
