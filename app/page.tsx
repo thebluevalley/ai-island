@@ -19,21 +19,18 @@ export default function Home() {
   const [envInfo, setEnvInfo] = useState({
     weather: "...",
     time: "...",
-    desc: "正在同步卫星数据...",
+    desc: "正在建立卫星连接...",
     day: 1
   });
   const [agents, setAgents] = useState<Agent[]>([]);
   
-  // 状态控制
   const [loading, setLoading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false); // 暂停状态
+  const [isPaused, setIsPaused] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- 核心功能函数 ---
-
-  // 1. 获取数据的通用函数
+  // --- API 逻辑 ---
   const fetchData = async () => {
-     if (loading || isPaused) return; // 如果暂停了，就不请求
+     if (loading || isPaused) return;
      setLoading(true);
      try {
        const res = await fetch('/api/tick', { method: 'POST' });
@@ -50,209 +47,210 @@ export default function Home() {
          });
        }
      } catch (e) {
-       console.error("连接中断:", e);
+       console.error(e);
      } finally {
        setLoading(false);
      }
   };
 
-  // 2. 重置世界
   const handleReset = async () => {
-    if (!confirm("⚠️ 警告：确定要毁灭当前世界并重新开始吗？所有进度将丢失！")) return;
-    
-    setIsPaused(true); // 先暂停
+    if (!confirm("⚠️ 警告：确定要毁灭当前世界并重新开始吗？")) return;
+    setIsPaused(true);
     setLogs(["正在重置时间线..."]);
-    
     try {
       await fetch('/api/reset', { method: 'POST' });
-      // 重置后刷新页面，让 tick 接口重建世界
       window.location.reload();
     } catch (e) {
-      alert("重置失败，请检查网络");
+      alert("重置失败");
       setIsPaused(false);
     }
   };
 
-  // --- 生命周期 ---
-
-  // 初始化加载
+  useEffect(() => { fetchData(); }, []);
   useEffect(() => {
-    fetchData();
-  }, []); // 只在挂载时执行一次
-
-  // 定时器循环 (心跳)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (!isPaused) fetchData();
-    }, 12000); // 12秒一回合
+    const timer = setInterval(() => { if (!isPaused) fetchData(); }, 12000);
     return () => clearInterval(timer);
-  }, [isPaused]); // 当暂停状态改变时，重新设置定时器
+  }, [isPaused]);
 
-  // 自动滚动
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [logs]);
 
   return (
-    // 全屏容器：背景灰白，禁止body滚动
-    <div className="flex flex-col h-[100dvh] w-full bg-gray-100 text-slate-800 font-sans overflow-hidden">
+    // 全局背景使用暖灰色 Stone-100
+    <div className="flex flex-col h-[100dvh] w-full bg-stone-100 text-stone-800 font-sans overflow-hidden">
       
-      {/* --- 顶部导航栏 (Header) --- */}
-      <header className="shrink-0 h-16 bg-white border-b border-gray-200 px-6 flex justify-between items-center shadow-sm z-20">
+      {/* --- Header: 磨砂玻璃质感 --- */}
+      <header className="shrink-0 h-16 bg-white/80 backdrop-blur-md border-b border-stone-200 px-6 flex justify-between items-center z-30 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="bg-black text-white font-bold px-2 py-1 rounded text-sm">AI</div>
-          <h1 className="font-bold text-lg tracking-wide text-slate-900">ISLAND_SIMULATOR</h1>
-          <span className="text-xs text-gray-400 border-l pl-3 ml-1 border-gray-300">
-            自动存档中...
-          </span>
+          <div className="w-8 h-8 bg-stone-900 text-white rounded-lg flex items-center justify-center font-bold font-serif text-lg">AI</div>
+          <div>
+            <h1 className="font-bold text-lg tracking-wider text-stone-800 uppercase">Island Simulator</h1>
+            <p className="text-[10px] text-stone-500 tracking-widest uppercase">Generative Storytelling</p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-           {/* 状态指示灯 */}
-           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono border ${loading ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-              <div className={`w-2 h-2 rounded-full ${loading ? 'bg-blue-500 animate-ping' : 'bg-gray-400'}`}></div>
-              {loading ? "CALCULATING" : "IDLE"}
+        <div className="flex items-center gap-4">
+           {/* 状态胶囊 */}
+           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${loading ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-stone-50 border-stone-200 text-stone-500'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`}></div>
+              {loading ? "PROCESSING..." : "LIVE"}
            </div>
 
-           {/* 控制按钮组 */}
-           <button 
-             onClick={() => setIsPaused(!isPaused)}
-             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors border ${isPaused ? 'bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100' : 'bg-white border-gray-300 hover:bg-gray-50'}`}
-           >
-             {isPaused ? "▶ 继续演化" : "⏸ 暂停"}
+           <div className="h-6 w-[1px] bg-stone-200"></div>
+
+           <button onClick={() => setIsPaused(!isPaused)} className="text-stone-500 hover:text-stone-800 transition-colors">
+             {isPaused ? "▶ 继续" : "⏸ 暂停"}
            </button>
-           
-           <button 
-             onClick={handleReset}
-             className="px-4 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-           >
-             ↺ 重置世界
+           <button onClick={handleReset} className="text-red-400 hover:text-red-600 transition-colors text-sm">
+             重置
            </button>
         </div>
       </header>
 
-      {/* --- 主内容区 (三栏布局) --- */}
+      {/* --- Main Content Grid --- */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* 左栏：环境信息 (20%) */}
-        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex">
-          <div className="p-5 border-b border-gray-100">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Environment</h2>
-            <div className="space-y-4">
-              <div>
-                <div className="text-4xl mb-1">🌤</div>
-                <div className="text-xl font-semibold text-slate-800">{envInfo.weather}</div>
-                <div className="text-sm text-gray-500">Day {envInfo.day} · {envInfo.time}</div>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-sm text-slate-600 italic leading-relaxed">
-                {envInfo.desc}
+        {/* 左栏：环境仪表盘 (20%) - 视觉重点 */}
+        <aside className="w-72 bg-white border-r border-stone-200 flex flex-col hidden md:flex z-20">
+          <div className="p-6 space-y-6">
+            
+            {/* 1. 天气卡片 */}
+            <div>
+              <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Environment</h2>
+              <div className="bg-stone-50 rounded-2xl p-5 border border-stone-100">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-3xl">🌤</span>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-stone-800">{envInfo.weather}</div>
+                    <div className="text-xs text-stone-500 uppercase tracking-wide">Day {envInfo.day} · {envInfo.time}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex-1 p-5">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Coordinates</h2>
-            <div className="w-full aspect-square bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center text-xs text-gray-400">
-              [地图系统运行中]
+
+            {/* 2. 环境描写 (单独显示) */}
+            <div>
+              <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Atmosphere</h2>
+              <div className="relative pl-4 border-l-2 border-stone-300">
+                <p className="text-sm text-stone-600 italic leading-relaxed font-serif">
+                  “{envInfo.desc}”
+                </p>
+              </div>
             </div>
+
+            {/* 3. 装饰性地图占位 */}
+            <div className="pt-6 border-t border-stone-100">
+               <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Location</h2>
+               <div className="w-full aspect-video bg-stone-100 rounded-lg border border-stone-200 border-dashed flex items-center justify-center">
+                 <span className="text-xs text-stone-400 font-mono">MAP SYSTEM ONLINE</span>
+               </div>
+            </div>
+
           </div>
         </aside>
 
-        {/* 中栏：剧情小说 (55%) */}
-        <main className="flex-1 bg-gray-50 relative flex flex-col min-w-0">
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6">
+        {/* 中栏：沉浸式阅读区 (55%) - 优化排版 */}
+        <main className="flex-1 bg-[#fcfaf8] relative flex flex-col min-w-0 shadow-inner">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 md:p-12 space-y-10">
             {logs.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+              <div className="h-full flex flex-col items-center justify-center text-stone-300 gap-4">
                 <div className="animate-spin text-2xl">⏳</div>
-                <p>正在初始化世界数据...</p>
+                <p className="font-serif italic">Creating World...</p>
               </div>
             )}
             
             {logs.map((log, i) => (
-              <div key={i} className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all hover:shadow-md">
-                {/* 模拟书页效果 */}
-                <p className="text-slate-700 leading-8 text-lg text-justify font-serif">
-                  {log}
-                </p>
-                <div className="mt-4 flex justify-end">
-                   <span className="text-[10px] text-gray-300 font-mono">LOG_ID_{i}</span>
+              <article key={i} className="max-w-3xl mx-auto group">
+                {/* 装饰性的章节号 */}
+                <div className="flex items-center gap-4 mb-4 opacity-30 group-hover:opacity-100 transition-opacity">
+                   <span className="h-[1px] w-8 bg-stone-400"></span>
+                   <span className="text-[10px] font-mono text-stone-500">LOG {String(i + 1).padStart(3, '0')}</span>
                 </div>
-              </div>
+
+                {/* 正文：增加字号，增加行高，使用衬线体 */}
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-stone-100/50">
+                  <p className="text-lg leading-9 text-stone-800 font-serif text-justify tracking-wide">
+                    {log}
+                  </p>
+                </div>
+              </article>
             ))}
-            
-            <div className="h-10"></div> {/* 底部留白 */}
+            <div className="h-20"></div>
           </div>
           
-          {/* 暂停遮罩 */}
-          {isPaused && (
-            <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-10">
-              <div className="bg-white px-6 py-4 rounded-lg shadow-xl border border-gray-200 flex flex-col items-center">
-                <span className="text-2xl mb-2">⏸</span>
-                <span className="font-bold text-slate-700">时间已暂停</span>
-                <span className="text-xs text-gray-500 mt-1">点击顶部“继续”按钮恢复</span>
-              </div>
-            </div>
-          )}
+          {/* 底部渐变遮罩 */}
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#fcfaf8] to-transparent pointer-events-none"></div>
         </main>
 
-        {/* 右栏：角色状态 (25%) */}
-        <aside className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-y-auto">
-          <div className="p-5 sticky top-0 bg-white z-10 border-b border-gray-100">
-             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Survivors Status</h2>
+        {/* 右栏：幸存者状态 (25%) - 修复拥挤问题 */}
+        <aside className="w-80 bg-white border-l border-stone-200 flex flex-col z-20">
+          <div className="p-4 border-b border-stone-100 bg-white/95 sticky top-0 z-10 backdrop-blur">
+             <h2 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Survivors Status</h2>
           </div>
           
-          <div className="p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-stone-50/50">
             {agents.map(agent => (
-              <div key={agent.id} className="group relative bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-blue-300 transition-colors">
-                {/* 角色头图/名字 */}
+              <div key={agent.id} className="bg-white border border-stone-200 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-transform hover:-translate-y-1 duration-300">
+                
+                {/* 头部：名字与血量分离 */}
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="font-bold text-slate-800 text-lg">{agent.name}</h3>
-                    <p className="text-xs text-slate-500">{agent.job} · {agent.gender}</p>
+                    <h3 className="font-bold text-stone-800 text-lg">{agent.name}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] px-1.5 py-0.5 bg-stone-100 text-stone-500 rounded uppercase tracking-wider">{agent.job}</span>
+                    </div>
                   </div>
-                  <div className={`text-xs px-2 py-1 rounded font-mono font-bold ${agent.hp > 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    HP {agent.hp}
-                  </div>
-                </div>
-
-                {/* 进度条 */}
-                <div className="space-y-2 mb-3">
-                  <div className="flex justify-between text-[10px] text-gray-500 uppercase">
-                    <span>Hunger</span>
-                    <span>{agent.hunger}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 transition-all duration-500" style={{width: `${agent.hunger}%`}}></div>
+                  {/* 血量圈 */}
+                  <div className={`flex flex-col items-center justify-center w-10 h-10 rounded-full border-2 ${agent.hp > 50 ? 'border-emerald-100 bg-emerald-50 text-emerald-600' : 'border-rose-100 bg-rose-50 text-rose-600'}`}>
+                    <span className="text-xs font-bold">{agent.hp}</span>
+                    <span className="text-[8px] font-bold opacity-50">HP</span>
                   </div>
                 </div>
 
-                {/* 详情 */}
-                <div className="bg-slate-50 rounded-lg p-2 space-y-2 text-xs">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <span>📍</span>
-                    <span className="font-medium">{agent.locationName}</span>
-                  </div>
-                  <div className="flex items-start gap-2 text-slate-600">
-                    <span>🎒</span>
-                    <span className="leading-tight">{agent.inventory.join(', ')}</span>
-                  </div>
-                  <div className="pt-2 border-t border-gray-200 text-slate-500 italic">
-                    “{agent.actionLog}”
+                {/* 进度条区域 */}
+                <div className="space-y-3 mb-4">
+                  {/* 饥饿度 */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-stone-400 mb-1 uppercase tracking-wider">
+                      <span>Energy</span>
+                      <span>{100 - agent.hunger}%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                       <div className="h-full bg-amber-400 rounded-full" style={{width: `${100 - agent.hunger}%`}}></div>
+                    </div>
                   </div>
                 </div>
+
+                {/* 底部信息：位置与动作 */}
+                <div className="pt-3 border-t border-stone-100 space-y-2">
+                   <div className="flex items-start gap-2 text-xs text-stone-600">
+                      <span className="mt-0.5">📍</span>
+                      <span className="font-medium">{agent.locationName}</span>
+                   </div>
+                   <div className="flex items-start gap-2 text-xs text-stone-500 italic">
+                      <span className="mt-0.5">💭</span>
+                      <span className="leading-tight">“{agent.actionLog}”</span>
+                   </div>
+                   {agent.inventory.length > 0 && (
+                     <div className="flex flex-wrap gap-1 mt-1">
+                       {agent.inventory.map((item, idx) => (
+                         <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-stone-100 text-stone-500 rounded border border-stone-200">
+                           {item}
+                         </span>
+                       ))}
+                     </div>
+                   )}
+                </div>
+
               </div>
             ))}
           </div>
         </aside>
 
       </div>
-      
-      {/* 移动端底部遮罩 (仅在屏幕太窄时显示提示，建议横屏或用电脑) */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-black text-white text-xs p-2 text-center opacity-80 z-50">
-        建议使用桌面端浏览器以获得最佳体验
-      </div>
-
     </div>
   );
 }
