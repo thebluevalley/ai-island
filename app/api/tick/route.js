@@ -7,197 +7,188 @@ export const maxDuration = 60;
 
 // --- 静态配置 ---
 const MAP_NAMES = { "0,0":"礁石","0,1":"浅滩","0,2":"沉船","1,0":"椰林","1,1":"广场","1,2":"溪流","2,0":"密林","2,1":"矿山","2,2":"高塔" };
-const BUILDING_COSTS = {
-  "House": { wood: 50, stone: 0, time: 20, name: "居住屋" },
-  "Warehouse": { wood: 80, stone: 20, time: 30, name: "大仓库" },
-  "Clinic": { wood: 100, stone: 50, time: 50, name: "诊所" },
-  "Kitchen": { wood: 60, stone: 30, time: 40, name: "野战厨房" },
-  "Tower": { wood: 120, stone: 80, time: 60, name: "瞭望塔" }
-};
+const LOCATIONS = Object.keys(MAP_NAMES); // 用于移动逻辑
 
 const cleanJson = (str) => str.replace(/```json|```/g, '').trim();
 
 export async function POST() {
   await connectDB();
 
-  // --- API 资源池 (11 Key) ---
+  // --- 11 Key Cluster ---
   const groqCluster = [
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" }),
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" }),
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_3, baseURL: "https://api.groq.com/openai/v1" }),
     new OpenAI({ apiKey: process.env.GROQ_API_KEY_4, baseURL: "https://api.groq.com/openai/v1" }),
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY_5, baseURL: "https://api.groq.com/openai/v1" }), // Matrix
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_5, baseURL: "https://api.groq.com/openai/v1" }), // World Simulator
   ];
 
   const sfKeys = [
     process.env.SF_API_KEY_1, process.env.SF_API_KEY_2, process.env.SF_API_KEY_3,
     process.env.SF_API_KEY_4, process.env.SF_API_KEY_5, process.env.SF_API_KEY_6
-  ].filter(key => key);
-
-  const getRandomSF = () => {
-    const randomKey = sfKeys[Math.floor(Math.random() * sfKeys.length)] || "dummy";
-    return new OpenAI({ apiKey: randomKey, baseURL: "https://api.siliconflow.cn/v1" });
-  };
+  ].filter(k=>k);
+  const getRandomSF = () => new OpenAI({ apiKey: sfKeys[Math.floor(Math.random()*sfKeys.length)]||"dummy", baseURL: "https://api.siliconflow.cn/v1" });
 
   let world = await World.findOne();
   if (!world) return NextResponse.json({error: "No world"});
 
-  // ==========================================
-  // Step 1: 议会 (Groq 5)
-  // ==========================================
-  let councilLog = "";
-  let isCouncilSession = false;
-
-  if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 100 && Math.random() < 0.4) {
-     try {
-       const res = await groqCluster[4].chat.completions.create({
-         model: "llama-3.3-70b-versatile",
-         messages: [{ role: "user", content: `资源:${JSON.stringify(world.globalResources)}. 建筑:${world.buildings.map(b=>b.name).join(",")}. 决定下个建筑(House/Warehouse/Clinic/Kitchen/Tower). JSON:{"decision":"...","reason":"..."}` }],
-         response_format: { type: "json_object" }
-       });
-       const council = JSON.parse(res.choices[0].message.content);
-       const cost = BUILDING_COSTS[council.decision] || BUILDING_COSTS["House"];
-       
-       world.globalResources.wood -= cost.wood;
-       if(cost.stone) world.globalResources.stone -= cost.stone;
-       world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time, desc: council.reason });
-       councilLog = `议会批准建造${cost.name}`;
-       isCouncilSession = true;
-     } catch(e) {}
-  }
-
-  // ==========================================
-  // Step 2: 角色意图 (Groq 1-4)
-  // ==========================================
-  const getPrompt = (agent) => {
-    let specificInst = isCouncilSession 
-      ? `议会刚刚决定建造新建筑，请发表你的看法！必须说话！` 
-      : `日常工作中。请多用动作描写(action_desc)，少说话(say留空)。`;
-
-    return `你叫${agent.name},职业${agent.job}. HP${agent.hp}. 
-    当前蓝图:${world.buildings.find(b=>b.status==='blueprint')?.name || "无"}.
-    ${specificInst}
-    可执行: 1.WORK 2.COMMAND 3.REST.
-    JSON格式: {"intent":"...", "target":"...", "say":"台词(无话可说留空)", "action_desc":"动作描写(如:擦汗/凝视)"}`;
-  };
+  // ======================================================
+  // Phase 1: World Simulation (感知与物理层) - Groq 5
+  // ======================================================
+  // 计算环境事件，谁在哪，谁看见了谁
+  // ======================================================
   
+  // 简单的物理模拟：如果资源不足，环境会恶化
+  const isCrisis = world.globalResources.food < 20;
+  
+  // ======================================================
+  // Phase 2: Agent Thought (认知层) - Groq 1-4
+  // Smallville Core: Retrieval & Planning
+  // ======================================================
+  
+  const getAgentPrompt = (agent) => {
+    // 1. 提取上下文
+    const loc = `${agent.x},${agent.y}`;
+    const locName = MAP_NAMES[loc] || "荒野";
+    
+    // 2. 检索记忆 (简单的 Recent 3)
+    const recentMemories = agent.memories.slice(-3).join("; ");
+    
+    // 3. 检索关系 (Social Graph)
+    // 简单的序列化： "张伟(50), 阿彪(-10)"
+    let socialContext = "关系正常";
+    if (agent.relationships && agent.relationships.size > 0) {
+        socialContext = Array.from(agent.relationships.entries())
+            .map(([k,v]) => `${k}(${v})`).join(", ");
+    }
+
+    // 4. 感知周围 (谁在同一格)
+    const neighbors = world.agents
+        .filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y)
+        .map(a => a.name).join(",");
+
+    return `
+      你扮演${agent.name}(${agent.job}). 
+      [状态] HP:${agent.hp} 饥饿:${agent.hunger} 位置:${locName}.
+      [记忆] ${recentMemories || "刚醒来"}.
+      [关系] ${socialContext}.
+      [周围] ${neighbors || "独自一人"}.
+      [全岛资源] 木:${world.globalResources.wood} 食:${world.globalResources.food}.
+      
+      请决策下一步行动。
+      规则:
+      1. 假如饥饿>50, 必须找食物(MOVE或GATHER).
+      2. 假如周围有人, 可以TALK(八卦/交易/合作).
+      3. 假如周围没人, 可以MOVE到其他坐标.
+      4. 假如是建筑师且资源够, BUILD.
+      
+      返回JSON: {
+        "action": "MOVE / GATHER / BUILD / TALK / REST",
+        "target": "坐标(如'1,2') / 物品 / 人名",
+        "thought": "你的内心独白(反思)",
+        "say": "对他人的对话(无则空)"
+      }
+    `;
+  };
+
   const callAI = (client, list) => Promise.all(list.map(a => 
     client.chat.completions.create({
       model: "llama-3.1-8b-instant",
-      messages: [{role:"user", content: getPrompt(a)}],
+      messages: [{role:"user", content: getAgentPrompt(a)}],
       response_format: { type: "json_object" }
-    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"", action_desc:"思考中"}))
+    }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({action:"REST", thought:"发呆", say:""}))
   ));
 
-  const [intents1, intents2, intents3, intents4] = await Promise.all([
+  const [res1, res2, res3, res4] = await Promise.all([
     callAI(groqCluster[0], world.agents.slice(0, 3)),
     callAI(groqCluster[1], world.agents.slice(3, 6)),
     callAI(groqCluster[2], world.agents.slice(6, 8)),
     callAI(groqCluster[3], world.agents.slice(8, 10))
   ]);
-  const allIntents = [...intents1, ...intents2, ...intents3, ...intents4];
+  const decisions = [...res1, ...res2, ...res3, ...res4];
 
-  // ==========================================
-  // Step 3: Matrix 仲裁 (Groq 5)
-  // ==========================================
-  let matrixReport = "";
-  try {
-    const npcStates = world.npcs.map(n => ({id:n.id, role:n.role, task:n.currentTask}));
-    const agentRequests = world.agents.map((a, i) => ({ 
-        name: a.name, 
-        job: a.job, 
-        intent: allIntents[i].intent 
-    }));
+  // ======================================================
+  // Phase 3: Action Execution (执行层) - 逻辑处理
+  // 更新位置、资源、产生新记忆
+  // ======================================================
+  
+  let worldEvents = []; // 用于稍后写小说
 
-    const matrixRes = await groqCluster[4].chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: `
-        系统主脑。NPC: ${JSON.stringify(npcStates)}. AI请求: ${JSON.stringify(agentRequests)}.
-        逻辑: COMMAND+蓝图->指派NPC建设. 闲置NPC->采集.
-        返回JSON: {"npc_updates": [{"id":"n1", "task":"..."}], "events": ["张伟指挥...", "鲁班建设..."]}
-      `}],
-      response_format: { type: "json_object" }
-    });
-    
-    const decision = JSON.parse(matrixRes.choices[0].message.content);
-    matrixReport = decision.events?.join(" ") || "";
-
-    // 应用 NPC 更新
-    const updates = decision.npc_updates || [];
-    world.npcs.forEach(npc => {
-      const update = updates.find(u => u.id === npc.id);
-      if (update) {
-        npc.currentTask = update.task;
-      } else {
-        if(!npc.currentTask.includes("建设")) {
-            npc.currentTask = Math.random()>0.5 ? "采集食物" : "伐木";
-            if (npc.currentTask === "采集食物") world.globalResources.food += 2;
-            if (npc.currentTask === "伐木") world.globalResources.wood += 2;
-        }
-      }
-      if (npc.currentTask.includes("建设")) {
-         const bp = world.buildings.find(b => b.status === "blueprint");
-         if (bp) {
-           bp.progress = Math.min(bp.maxProgress, bp.progress + 5);
-           if (bp.progress >= bp.maxProgress) bp.status = "active";
-         }
-      }
-    });
-
-  } catch (e) { console.error(e); matrixReport = `主脑运算异常: ${e.message}`; }
-
-  allIntents.forEach((intent, i) => {
+  decisions.forEach((d, i) => {
     const agent = world.agents[i];
-    agent.actionLog = intent.say ? `“${intent.say}”` : `[${intent.action_desc || "工作中"}]`;
-    agent.hunger += 1;
-    if (intent.intent === "WORK" && (agent.job === "建筑师" || agent.job === "工匠")) {
+    agent.actionLog = d.say || `[${d.action}] ${d.thought}`;
+    
+    // 写入记忆 (Memory Stream Ingestion)
+    // 只有重要的事情才记入长时记忆，这里简化为每回合思考都记入
+    if (d.thought) agent.memories.push(d.thought);
+    if (agent.memories.length > 10) agent.memories.shift(); // 遗忘机制
+
+    // 执行逻辑
+    switch (d.action) {
+      case "MOVE":
+        // 解析坐标 "1,2"
+        const [nx, ny] = (d.target || "1,1").split(",").map(Number);
+        if (!isNaN(nx) && !isNaN(ny)) {
+          agent.x = Math.min(2, Math.max(0, nx));
+          agent.y = Math.min(2, Math.max(0, ny));
+          agent.locationName = MAP_NAMES[`${agent.x},${agent.y}`];
+          worldEvents.push(`${agent.name}移动到了${agent.locationName}。`);
+        }
+        break;
+      case "GATHER":
+        world.globalResources.food += 2;
+        world.globalResources.wood += 2;
+        agent.hunger = Math.max(0, agent.hunger - 10);
+        worldEvents.push(`${agent.name}收集了资源。`);
+        break;
+      case "TALK":
+        // 社交更新：如果 TALK，增加好感度
+        // 这需要复杂的实体链接，这里简化处理
+        worldEvents.push(`${agent.name}对${d.target}说：“${d.say}”`);
+        break;
+      case "BUILD":
         const bp = world.buildings.find(b => b.status === "blueprint");
-        if (bp) bp.progress += 10;
+        if (bp && agent.x === bp.x && agent.y === bp.y) {
+           bp.progress += 10;
+           worldEvents.push(`${agent.name}正在建造${bp.name}。`);
+        }
+        break;
     }
+    agent.hunger += 1;
   });
 
-  // ==========================================
-  // Step 4: 叙事生成 (SiliconFlow) - 动态环境优化版
-  // ==========================================
+  // NPC 简单逻辑 (保持世界运转)
+  world.npcs.forEach(npc => {
+    npc.currentTask = Math.random()>0.5 ? "搬运物资" : "清理废墟";
+  });
+
+  // ======================================================
+  // Phase 4: Narrative (叙事层) - SiliconFlow
+  // ======================================================
+  
   const timeNow = ["晨","午","昏","夜"][(world.turn - 1) % 4];
   let envData = { weather: world.weather, desc: world.envDescription };
   let story = "";
 
   try {
-    const isEnvUpdateTurn = world.turn % 3 === 1 || !world.envDescription;
-    let envInstruction = "";
-
-    if (isEnvUpdateTurn) {
-      // --- 更新回合：生成新环境并要求描写 ---
+    // 降频环境描写
+    if (world.turn % 3 === 1 || !world.envDescription) {
       const r1 = await getRandomSF().chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
         messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 极简环境(15字). JSON:{"weather":"...","desc":"..."}`}],
         response_format: { type: "json_object" }
       });
       envData = JSON.parse(cleanJson(r1.choices[0].message.content));
-      // 指令：需要描写
-      envInstruction = `环境变化:${envData.desc} (请在开头简要描写)`;
-    } else {
-      // --- 保持回合：使用旧环境，但要求忽略描写 ---
-      // 指令：明确要求不写环境
-      envInstruction = `环境(保持不变): ${envData.desc} (⚠️本段落请完全省略环境描写，将字数全部用于人物动作和交互)`;
     }
-
-    const activeCharacters = allIntents.map((act, i) => {
-        const name = world.agents[i].name;
-        if (act.say) return `${name}说:"${act.say}"`;
-        if (act.action_desc) return `${name}${act.action_desc}`;
-        return null; 
-    }).filter(Boolean).slice(0, 6).join("；");
 
     const r2 = await getRandomSF().chat.completions.create({
        model: "Qwen/Qwen2.5-7B-Instruct",
        messages: [{role:"user", content: `
-         写200-350字微小说。
-         ${envInstruction}
-         议会:${councilLog}. 系统:${matrixReport}.
-         角色动态:${activeCharacters}.
-         要求: 只有部分人说话。描写要有镜头感，多写神态动作。
+         Smallville风格微小说(200字).
+         环境:${envData.desc} (略写).
+         事件流:${worldEvents.slice(0, 8).join("|")}.
+         人物内心:${decisions.slice(0, 3).map(d=>d.thought).join("|")}.
+         要求: 侧重描写人物的互动和位置移动，体现社会关系。
          必须返回 JSON:{"story":"..."}
        `}],
        response_format: { type: "json_object" }
@@ -205,23 +196,19 @@ export async function POST() {
      story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
   } catch(e) {
      console.error("Story Error", e);
-     story = `⚠️ [AI ERROR] ${e.message}`;
+     story = `⚠️ [AI NARRATIVE ERROR] ${e.message}`;
   }
 
-  // ==========================================
   // 保存
-  // ==========================================
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.desc;
-  world.socialNews = councilLog || "无";
   world.logs.push(story);
   if(world.logs.length > 50) world.logs.shift();
   
-  world.markModified('buildings');
-  world.markModified('agents');
-  world.markModified('npcs');
-  world.markModified('globalResources');
+  // 必须显式标记 Map 类型更改
+  // Mongoose Map 比较特殊，需要这样标记
+  // world.markModified('agents'); 
   
   await world.save();
   return NextResponse.json({ success: true, world });
