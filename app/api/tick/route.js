@@ -15,10 +15,16 @@ const BUILDING_COSTS = {
   "Tower": { wood: 120, stone: 80, time: 60, name: "瞭望塔" }
 };
 
+// 辅助：清洗 JSON 字符串 (防止 AI 输出 ```json ... ``` 导致解析失败)
+const cleanJson = (str) => {
+  return str.replace(/```json|```/g, '').trim();
+};
+
 export async function POST() {
   await connectDB();
   
   // --- A. 算力初始化 (8 Key) ---
+  // 确保 Vercel 环境变量里填了 SF_API_KEY_3 和 SF_API_KEY_4，否则这里会报错
   const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   const sfNews = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   const sfQuest = new OpenAI({ apiKey: process.env.SF_API_KEY_3 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
@@ -27,55 +33,50 @@ export async function POST() {
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
-  const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" }); // 裁判/议会
+  const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
 
   let world = await World.findOne();
   if (!world) return NextResponse.json({error: "No world"});
 
   // --- B. 逻辑处理阶段 ---
   
-  // 1. NPC 自动化工作 (算法驱动)
+  // 1. NPC 自动化工作
   let npcLogs = [];
   world.npcs.forEach(npc => {
-    // 简单逻辑：如果有在建建筑，工人去建造；否则去采集
     const activeBlueprint = world.buildings.find(b => b.status === "blueprint");
-    
     if (activeBlueprint && npc.role === "worker") {
       activeBlueprint.progress = Math.min(activeBlueprint.maxProgress, activeBlueprint.progress + 5);
       if (activeBlueprint.progress >= activeBlueprint.maxProgress) {
         activeBlueprint.status = "active";
-        npcLogs.push(`工人完成了【${activeBlueprint.name}】的建设！`);
+        npcLogs.push(`工人建成了【${activeBlueprint.name}】`);
       }
       npc.currentTask = `建设 ${activeBlueprint.name}`;
       npc.state = "working";
     } else {
-      // 采集逻辑
       if (Math.random() > 0.5) {
         world.globalResources.wood += 2;
         npc.currentTask = "伐木";
       } else {
         world.globalResources.food += 2;
-        npc.currentTask = "采集浆果";
+        npc.currentTask = "采集";
       }
       npc.state = "gathering";
     }
   });
 
-  // 2. AI 议会自治 (触发条件：资源充足且无建设)
+  // 2. AI 议会自治
   let councilLog = "";
   const canBuild = !world.buildings.find(b => b.status === "blueprint");
   const isRich = world.globalResources.wood > 150 && world.globalResources.stone > 50;
   
   if (canBuild && isRich && Math.random() < 0.3) {
-     // 触发议会：Groq 4 扮演
      try {
        const res = await groq4.chat.completions.create({
          model: "llama-3.3-70b-versatile",
          messages: [{ role: "user", content: `
-           你是岛屿议会。资源充足(木150+)。
-           现有建筑: ${world.buildings.map(b=>b.name).join(",") || "无"}。
-           请决定下一个建造什么：House(增加人口), Clinic(治疗), Kitchen(做饭), Tower(防御)。
-           返回JSON: {"decision": "Clinic", "reason": "张伟提议：为了大家的健康..."}
+           你是议会。资源充足。现有: ${world.buildings.map(b=>b.name).join(",")||"无"}。
+           决定建什么: House, Warehouse, Clinic, Kitchen, Tower。
+           返回JSON: {"decision": "Kitchen", "reason": "需要更多食物"}
          `}],
          response_format: { type: "json_object" }
        });
@@ -83,14 +84,13 @@ export async function POST() {
        const bType = council.decision;
        const cost = BUILDING_COSTS[bType] || BUILDING_COSTS["House"];
        
-       // 自动扣费并立项
        world.globalResources.wood -= cost.wood;
        world.globalResources.stone -= cost.stone;
        world.buildings.push({
          type: bType, name: cost.name, x: 1, y: 1, 
-         status: "blueprint", progress: 0, maxProgress: cost.time, desc: "议会决议项目"
+         status: "blueprint", progress: 0, maxProgress: cost.time, desc: "议会项目"
        });
-       councilLog = `【议会决议】${council.reason}，开始建造${cost.name}。`;
+       councilLog = `议会决定建造${cost.name}。`;
      } catch(e) {}
   }
 
@@ -98,13 +98,9 @@ export async function POST() {
   const getPrompt = (agent) => {
     const loc = MAP_NAMES[`${agent.x},${agent.y}`] || "荒野";
     return `
-      你叫${agent.name}，职业${agent.job}。HP${agent.hp} 心情${agent.sanity}。
-      当前位置:${loc}。
-      全局资源: 木${world.globalResources.wood} 食${world.globalResources.food}。
+      你叫${agent.name}，职业${agent.job}。HP${agent.hp}。
       当前工程: ${world.buildings.find(b=>b.status==='blueprint')?.name || "无"}。
-      
-      请决定行动 JSON: {"action":"WORK/REST/TALK", "say":"..."}
-      如果职业是建筑师且有工程，优先WORK。
+      决定行动 JSON: {"action":"WORK/REST/TALK", "say":"简短一句话"}
     `;
   };
   
@@ -123,28 +119,21 @@ export async function POST() {
   ]);
   const allActions = [...res1, ...res2, ...res3];
 
-  // 更新 AI 状态
   allActions.forEach((act, i) => {
     const agent = world.agents[i];
     agent.actionLog = act.say;
-    if (act.action === "WORK") {
-      agent.hunger = Math.min(100, agent.hunger + 5);
-      // 如果是建筑师，加速建造
-      if (agent.job === "建筑师") {
-        const bp = world.buildings.find(b => b.status === "blueprint");
-        if(bp) bp.progress += 10; 
-      }
+    if (act.action === "WORK" && agent.job === "建筑师") {
+      const bp = world.buildings.find(b => b.status === "blueprint");
+      if(bp) bp.progress += 10; 
     }
-    // 自然代谢
     agent.hunger += 1;
-    if (agent.hunger > 80) agent.hp -= 2;
   });
 
-  // --- D. 叙事生成 (SiliconFlow) ---
+  // --- D. 叙事生成 (SiliconFlow Key 4) ---
   const timeSlots = ["清晨", "上午", "正午", "下午", "黄昏", "深夜"];
   const timeNow = timeSlots[(world.turn - 1) % 6];
   
-  // 环境
+  // 1. 环境
   let envData = { weather: world.weather, desc: world.envDescription };
   try {
     const r = await sfEnv.chat.completions.create({
@@ -152,34 +141,42 @@ export async function POST() {
       messages: [{role:"user", content: `Day${world.turn}, ${timeNow}. 生成环境描写(30字)。JSON:{"weather":"晴","desc":"..."}`}],
       response_format: { type: "json_object" }
     });
-    envData = JSON.parse(r.choices[0].message.content);
+    envData = JSON.parse(cleanJson(r.choices[0].message.content));
   } catch(e){}
 
-  // 故事
-  let story = "...";
+  // 2. 故事 (核心修复点)
+  let story = "";
   try {
      const r = await sfStory.chat.completions.create({
        model: "Qwen/Qwen2.5-7B-Instruct",
-       messages: [{role:"user", content: `写一段300字微小说。
+       messages: [{role:"user", content: `
+         写一段300字微小说。
+         环境: ${envData.desc}
          议会: ${councilLog}
-         NPC动态: ${npcLogs.join(",")}
-         AI行动: ${allActions.map((a,i)=>world.agents[i].name+":"+a.action).join(",")}
-         JSON: {"story":"..."}
+         事件: ${npcLogs.join(",")}
+         角色: ${allActions.map((a,i)=>world.agents[i].name+a.action).join(",")}
+         必须返回 JSON: {"story":"..."}
        `}],
        response_format: { type: "json_object" }
      });
-     story = JSON.parse(r.choices[0].message.content).story;
-  } catch(e){}
+     const content = cleanJson(r.choices[0].message.content);
+     story = JSON.parse(content).story;
+  } catch(e) {
+     console.error("Story Gen Error:", e);
+     // --- 强制保底生成 (Fallback) ---
+     // 如果 AI 写小说失败，系统自动拼接一段战报，保证有字可看
+     const activeNames = world.agents.slice(0,3).map(a=>a.name).join("、");
+     story = `【系统战报】第${world.turn}回合，时间来到${timeNow}。天气${envData.weather}。${councilLog ? "议会通过了新的决议。" : "岛屿秩序井然。"} ${npcLogs.length > 0 ? npcLogs.join("，") : "工人们正在按部就班地工作。"} ${activeNames}等人正在${MAP_NAMES["1,1"]}附近活动。生存仍在继续。`;
+  }
 
   // --- E. 保存 ---
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.desc;
-  world.socialNews = councilLog || "社会平稳运行中...";
-  world.logs.push(story);
+  world.socialNews = councilLog || "秩序平稳";
+  world.logs.push(story); // 此时 story 绝对不可能是空字符串或 "..."
   if(world.logs.length > 50) world.logs.shift();
   
-  // 必须显式标记数组修改
   world.markModified('buildings');
   world.markModified('agents');
   world.markModified('npcs');
