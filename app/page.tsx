@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
-// 定义类型
+// 定义数据类型，防止 TypeScript 报错
 type Agent = {
   id: number;
   name: string;
@@ -22,29 +22,46 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // 自动滚动
+  // 自动滚动到底部
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  // 核心循环
+  // 核心循环：每 10 秒触发一次
   useEffect(() => {
     const timer = setInterval(async () => {
       if (loading) return; 
       setLoading(true);
+      
       try {
         const res = await fetch('/api/tick', { method: 'POST' });
+        
+        // --- 错误诊断代码 ---
+        if (!res.ok) {
+           // 如果服务器返回 500/504 等错误，尝试读取错误文本
+           const errText = await res.text();
+           throw new Error(`服务器报错 (${res.status}): ${errText.slice(0, 100)}...`); 
+        }
+        // ------------------
+
         const data = await res.json();
+        
         if (data.success) {
           setLogs(prev => [...prev, data.log]);
           if (data.agents) setAgents(data.agents);
+        } else {
+          // 如果后端虽然通了，但逻辑返回失败
+          console.warn("逻辑错误:", data);
         }
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        console.error("请求失败:", e);
+        // 关键：把错误直接显示在界面上，方便手机端调试
+        setLogs(prev => [...prev, `[系统警报] 连接中断: ${e.message || "未知错误"}`]);
       } finally {
         setLoading(false);
       }
     }, 10000); 
+
     return () => clearInterval(timer);
   }, [loading]);
 
@@ -70,17 +87,20 @@ export default function Home() {
       {/* --- 中间：日志滚动区 (自动占据剩余空间) --- */}
       <main className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
         {logs.length === 0 && (
-          <div className="text-center mt-10 text-gray-400 text-xs">
-            <p>正在建立卫星连接...</p>
+          <div className="text-center mt-10 text-gray-400 text-xs select-none">
+            <p className="mb-2">正在建立卫星连接...</p>
             <p>等待第一次演化...</p>
           </div>
         )}
 
         {logs.map((log, i) => (
-          <div key={i} className="flex gap-2 text-sm">
-            <span className="text-gray-300 select-none">|</span>
-            {/* 白色卡片背景，让文字更清晰 */}
-            <div className="bg-white p-2 rounded-lg shadow-sm border border-gray-100 max-w-[90%] text-gray-800 leading-relaxed">
+          <div key={i} className="flex gap-2 text-sm group">
+            <span className="text-gray-300 select-none opacity-50">|</span>
+            {/* 根据是否是报错信息，显示不同颜色的边框 */}
+            <div className={`
+              p-2 rounded-lg shadow-sm border max-w-[90%] leading-relaxed text-gray-800
+              ${log.includes('[系统警报]') ? 'bg-red-50 border-red-200 text-red-800' : 'bg-white border-gray-100'}
+            `}>
               {log}
             </div>
           </div>
