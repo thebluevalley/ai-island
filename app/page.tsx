@@ -33,9 +33,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [paused, setPaused] = useState(false);
   
+  // 倒计时状态
+  const [nextRefresh, setNextRefresh] = useState(20); 
+  
   // 视图控制
   const [rightTab, setRightTab] = useState<'ai' | 'npc'>('ai');
-  // 移动端视图状态：logs (最左), map, control, roster
   const [mobileView, setMobileView] = useState<'logs' | 'map' | 'control' | 'roster'>('logs');
 
   const fetchData = async () => {
@@ -44,7 +46,10 @@ export default function Home() {
     try {
       const res = await fetch('/api/tick', { method: 'POST' });
       const data = await res.json();
-      if (data.success) setWorldData(data.world);
+      if (data.success) {
+        setWorldData(data.world);
+        setNextRefresh(20); // 重置倒计时
+      }
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -59,7 +64,22 @@ export default function Home() {
   };
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { const t = setInterval(() => { if(!paused) fetchData(); }, 12000); return () => clearInterval(t); }, [paused]);
+
+  // 定时器逻辑：改为每秒减少倒计时，归零时刷新
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!paused && !loading) {
+        setNextRefresh(prev => {
+          if (prev <= 1) {
+            fetchData();
+            return 20; // 重置为 20秒 (安全间隔)
+          }
+          return prev - 1;
+        });
+      }
+    }, 1000); // 每秒执行一次
+    return () => clearInterval(timer);
+  }, [paused, loading]);
 
   if (!worldData) return (
     <div className="h-screen flex flex-col items-center justify-center bg-[#e5e5e5] text-stone-500 gap-4">
@@ -71,7 +91,6 @@ export default function Home() {
   const { agents, npcs, buildings, globalResources, logs, weather } = worldData;
 
   // --- 数据计算 ---
-  // 待执行命令清单 (蓝图 + NPC任务)
   const pendingBuilds = buildings.filter((b: Building) => b.status === 'blueprint');
   const activeBuilds = buildings.filter((b: Building) => b.status === 'active');
   const busyNpcs = npcs.filter((n: NPC) => n.currentTask && n.currentTask !== '等待指令');
@@ -111,14 +130,11 @@ export default function Home() {
   // --- 组件：地图与指令面板 ---
   const MapDashboard = () => (
     <div className="flex flex-col h-full bg-[#e5e5e5]">
-      {/* 顶部：系统指令概览 */}
       <div className="bg-stone-800 text-stone-300 p-4 shadow-md shrink-0">
         <div className="flex justify-between items-center mb-3">
            <h2 className="text-xs font-bold text-amber-500 uppercase tracking-widest animate-pulse">System Command</h2>
            <span className="text-[10px] font-mono bg-stone-700 px-2 py-0.5 rounded text-stone-400">Turn {worldData.turn}</span>
         </div>
-        
-        {/* 指令清单 */}
         <div className="space-y-2 text-xs font-mono">
            <div className="flex gap-2">
               <span className="text-stone-500">PHASE:</span>
@@ -140,7 +156,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 地图区域 */}
       <div className="flex-1 p-4 overflow-y-auto">
          <div className="bg-stone-300 p-1 rounded shadow-inner">
            <div className="grid grid-cols-3 gap-1 aspect-square">
@@ -168,7 +183,6 @@ export default function Home() {
            </div>
          </div>
          
-         {/* 建筑统计文字 */}
          <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="bg-white p-3 rounded border border-stone-200 shadow-sm">
                <div className="text-[10px] text-stone-400 uppercase">Active Buildings</div>
@@ -242,23 +256,17 @@ export default function Home() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#e5e5e5] text-stone-800 font-sans overflow-hidden">
       
-      {/* 桌面端布局 (保持 Dashboard 风格) */}
+      {/* 桌面端布局 */}
       <div className="hidden md:flex flex-1 overflow-hidden">
-        {/* 左: 建设 */}
         <aside className="w-64 border-r border-stone-300 z-10"><ControlPanel /></aside>
-        
-        {/* 中: 地图 + 日志 */}
         <main className="flex-1 flex flex-col min-w-0 bg-[#e5e5e5] z-0">
-           {/* 桌面端把地图放上面作为概览 */}
            <div className="h-72 border-b border-stone-300"><MapDashboard /></div>
            <div className="flex-1 relative"><LogPanel /></div>
         </main>
-        
-        {/* 右: 人员 */}
         <aside className="w-72 border-l border-stone-300 z-10"><RosterPanel /></aside>
       </div>
 
-      {/* 移动端布局 (单视图切换) */}
+      {/* 移动端布局 */}
       <div className="md:hidden flex-1 overflow-hidden relative bg-[#e5e5e5]">
         {mobileView === 'logs' && <LogPanel />}
         {mobileView === 'map' && <MapDashboard />}
@@ -266,8 +274,11 @@ export default function Home() {
         {mobileView === 'roster' && <RosterPanel />}
       </div>
 
-      {/* 移动端底部导航栏 (4栏) */}
-      <nav className="md:hidden h-14 bg-white border-t border-stone-200 flex justify-around items-center shrink-0 z-50 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+      {/* 底部导航栏 (带进度条) */}
+      <nav className="md:hidden h-14 bg-white border-t border-stone-200 flex justify-around items-center shrink-0 z-50 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)] relative">
+        {/* 顶部微型进度条 */}
+        <div className="absolute top-0 left-0 h-0.5 bg-blue-500 transition-all duration-1000 ease-linear" style={{width: `${((20-nextRefresh)/20)*100}%`}}></div>
+        
         <button onClick={() => setMobileView('logs')} className={`flex flex-col items-center gap-0.5 p-2 w-16 transition-colors ${mobileView==='logs'?'text-blue-600':'text-stone-400'}`}>
           <span className="text-lg">📄</span>
           <span className="text-[10px] font-bold">日志</span>
