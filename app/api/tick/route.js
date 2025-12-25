@@ -5,7 +5,7 @@ import { World } from '@/lib/models';
 
 export const maxDuration = 60;
 
-// --- 地图配置 ---
+// --- 基础配置 ---
 const MAP_LOCATIONS = {
   "0,0": "北岸礁石", "0,1": "浅滩", "0,2": "沉船遗迹",
   "1,0": "椰林",   "1,1": "中央广场", "1,2": "淡水溪流",
@@ -13,54 +13,48 @@ const MAP_LOCATIONS = {
 };
 const getLocName = (x, y) => MAP_LOCATIONS[`${x},${y}`] || "荒野";
 
-// --- 资源刷新规则 ---
+// 资源刷新表
 const SPAWN_RULES = {
-  "1,0": ["椰子", "树枝", "宽叶片"], 
-  "0,1": ["蛤蜊", "海带", "漂流木"], 
-  "1,2": ["淡水", "淡水鱼", "鹅卵石"], 
-  "2,0": ["蘑菇", "硬木", "野果"], 
-  "2,1": ["石块", "燧石"], 
-  "0,2": ["废铁片", "塑料布"] 
+  "1,0": ["椰子", "树枝"], "0,1": ["蛤蜊", "漂流木"], 
+  "1,2": ["淡水鱼", "鹅卵石"], "2,0": ["蘑菇", "野果"], 
+  "2,1": ["石块", "燧石"], "0,2": ["废铁片", "塑料布"] 
 };
 
 export async function POST() {
   await connectDB();
   
-  // --- 关键修复：将 API 客户端初始化移到函数内部 ---
-  // 这样构建时不会报错，只有运行时才会读取 Key
-  const groqEnv = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
-  const groqSocial = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
-  const groqJudge = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  // --- 1. 初始化 6 个 API 客户端 ---
+  // 硅基流动 (SF)
+  const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  const sfNews = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
 
-  const sfTeamA = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
-  const sfTeamB = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
+  // Groq (G)
+  const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
+  
   // --------------------------------------------------
 
   let world = await World.findOne();
-
-  // 初始化世界
   if (!world || !world.agents || world.agents.length < 8) {
      if(world) await World.deleteMany({});
      world = await World.create({
-        turn: 1, 
-        weather: "晴朗",
-        mapResources: {}, 
-        mapBuildings: { "1,1": { name: "幸存者营地", progress: 0, max: 100 } },
+        turn: 1, weather: "晴朗", mapResources: {}, mapBuildings: {"1,1":{name:"营地",progress:0,max:100}},
         agents: [
-            { id: 0, name: "张伟", gender: "男", age: 34, job: "前消防员", personality: "领袖气质", inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场" },
-            { id: 1, name: "林晓云", gender: "女", age: 26, job: "植物学者", personality: "温柔", inventory: ["采集袋"], x:1, y:1, locationName:"中央广场" },
-            { id: 2, name: "王强", gender: "男", age: 42, job: "奸商", personality: "狡猾", inventory: ["打火机"], x:1, y:1, locationName:"中央广场" },
-            { id: 3, name: "陈子墨", gender: "男", age: 19, job: "美术生", personality: "观察者", inventory: ["素描本"], x:1, y:1, locationName:"中央广场" },
-            { id: 4, name: "老赵", gender: "男", age: 55, job: "老厨师", personality: "护食", inventory: ["铁锅"], x:1, y:1, locationName:"中央广场" },
-            { id: 5, name: "Lisa", gender: "女", age: 29, job: "护士", personality: "干练", inventory: ["急救包"], x:1, y:1, locationName:"中央广场" },
-            { id: 6, name: "阿彪", gender: "男", age: 24, job: "拳击手", personality: "鲁莽", inventory: [], x:1, y:1, locationName:"中央广场" },
-            { id: 7, name: "神婆", gender: "女", age: 45, job: "占卜师", personality: "神叨叨", inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场" }
+            { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场" },
+            { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
+            { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
+            { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场" },
+            { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场" },
+            { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场" },
+            { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
+            { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场" }
         ],
-        logs: ["【序幕】新的生存挑战开始了。"]
+        logs: ["【序幕】生存实验开始..."]
      });
   }
 
-  // 时间流逝
   const timeSlots = ["清晨", "上午", "正午", "下午", "黄昏", "深夜"];
   const timeNow = timeSlots[(world.turn - 1) % 6];
   const dayCount = Math.floor((world.turn - 1) / 6) + 1;
@@ -68,174 +62,177 @@ export async function POST() {
   // --- STEP 0: 资源自然刷新 ---
   if (Math.random() < 0.4) {
     const coords = Object.keys(SPAWN_RULES);
-    const randomCoord = coords[Math.floor(Math.random() * coords.length)];
-    const possibleItems = SPAWN_RULES[randomCoord];
-    const newItem = possibleItems[Math.floor(Math.random() * possibleItems.length)];
-    
-    const currentItems = world.mapResources[randomCoord] || [];
-    if (currentItems.length < 5) { 
-      currentItems.push(newItem);
-      world.mapResources = { ...world.mapResources, [randomCoord]: currentItems };
+    const rC = coords[Math.floor(Math.random() * coords.length)];
+    const item = SPAWN_RULES[rC][Math.floor(Math.random() * SPAWN_RULES[rC].length)];
+    const items = world.mapResources[rC] || [];
+    if (items.length < 5) { 
+      items.push(item);
+      world.mapResources = { ...world.mapResources, [rC]: items };
     }
   }
 
-  // --- STEP 1: 环境生成 (Groq) ---
-  const envRes = await groqEnv.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成新的环境描写(50字内)和天气。JSON: {"weather":"", "description":""}` }],
-    response_format: { type: "json_object" }
-  });
-  const envData = JSON.parse(envRes.choices[0].message.content);
+  // --- STEP 1: 环境生成 (SF Key 1 - 专职环境) ---
+  let envData = { description: world.envDescription, weather: world.weather };
+  try {
+    const res = await sfEnv.chat.completions.create({
+      model: "Qwen/Qwen2.5-7B-Instruct",
+      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。JSON: {"weather":"", "description":""}` }],
+      response_format: { type: "json_object" }
+    });
+    envData = JSON.parse(res.choices[0].message.content);
+  } catch(e) {}
 
-  // --- STEP 2: 角色决策 (SiliconFlow) ---
-  const getGroundItems = (x, y) => {
-    const items = world.mapResources[`${x},${y}`] || [];
-    return items.length > 0 ? items.join(", ") : "无";
-  };
-  const getBuilding = (x, y) => {
-    const b = world.mapBuildings[`${x},${y}`];
-    return b ? `${b.name}(进度${b.progress}%)` : "荒地";
+  // --- STEP 2: 角色决策 (4 Groq Keys 并发) ---
+  const getInfo = (agent) => {
+    const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
+    const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}(${n.inventory.join(",")})`).join(", ");
+    return `位置:${getLocName(agent.x,agent.y)} 地上:[${ground}] 身边:[${people}] 背包:[${agent.inventory}]`;
   };
 
   const getPrompt = (agent) => `
-    你是${agent.name} (${agent.job}, ${agent.personality})。
-    状态: HP${agent.hp} 饱食${100-agent.hunger}%。
-    位置: ${getLocName(agent.x, agent.y)}。
+    你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
+    环境: ${envData.description}。
+    感知: ${getInfo(agent)}
     
-    【眼前所见】
-    1. 地上物资: [${getGroundItems(agent.x, agent.y)}]
-    2. 建筑工地: [${getBuilding(agent.x, agent.y)}]
-    3. 你的背包: [${agent.inventory.join(", ")}]
+    决策规则:
+    1. **冲突**: 想要别人的东西可以 STEAL 或 ATTACK。
+    2. **生存**: 饿了EAT。地上有东西PICKUP。
+    3. **建设**: 在中央广场且有材料BUILD。
+    4. **移动**: MOVE。
+    5. **社交**: TALK。
     
-    请决定行动。规则：
-    1. **生存第一**：如果饿了(饱食<30%)，优先吃东西(背包里有食物)或去采集。
-    2. **收集物资**：看到地上有用的东西，用 "PICKUP 物品名" 捡起来。
-    3. **建设家园**：如果在 "中央广场(1,1)" 且有材料，用 "BUILD" 增加建筑进度。
-    4. **移动**：去资源点(如椰林1,0, 溪流1,2)寻找物资。
-    
-    输出JSON: {"action": "PICKUP/EAT/BUILD/MOVE/TALK", "target": "物品名/方向/人名", "say": "台词"}
+    输出JSON: {"action": "动作类型", "target": "目标对象", "say": "台词"}
   `;
 
-  const callSF = async (client, agentsList) => {
-    return Promise.all(agentsList.map(agent => 
-      client.chat.completions.create({
-        model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{role:"user", content: getPrompt(agent)}],
-        response_format: { type: "json_object" }
-      }).then(res => {
-         try { return JSON.parse(res.choices[0].message.content); }
-         catch(e) { return { action: "TALK", target: "所有人", say: "..." }; }
-      })
-    ));
-  };
+  const callActors = (client, list) => Promise.all(list.map(a => 
+    client.chat.completions.create({
+      model: "llama-3.1-8b-instant", // 极速模型
+      messages: [{role:"user", content: getPrompt(a)}],
+      response_format: { type: "json_object" }
+    }).then(r => JSON.parse(r.choices[0].message.content)).catch(()=>({action:"TALK",target:"...",say:"..."}))
+  ));
 
-  const [groupA_Res, groupB_Res] = await Promise.all([
-    callSF(sfTeamA, world.agents.slice(0, 4)), 
-    callSF(sfTeamB, world.agents.slice(4, 8))
+  // 4路并发，每路只负责2个人，速度极快
+  const [act1, act2, act3, act4] = await Promise.all([
+    callActors(groq1, world.agents.slice(0,2)),
+    callActors(groq2, world.agents.slice(2,4)),
+    callActors(groq3, world.agents.slice(4,6)),
+    callActors(groq4, world.agents.slice(6,8))
   ]);
-  const allActions = [...groupA_Res, ...groupB_Res];
+  const rawActions = [...act1, ...act2, ...act3, ...act4];
 
-  // --- STEP 3: 物理裁判与逻辑结算 ---
-  const updates = [];
-  for (let i = 0; i < world.agents.length; i++) {
-    const agent = world.agents[i];
-    const act = allActions[i];
-    const coord = `${agent.x},${agent.y}`;
-    let update = { id: agent.id, action_log: act.say };
-    
-    // 简单移动逻辑
-    if (act.action === "MOVE") {
-        // 随机移动到一个相邻格子 (简化处理)
-        const moves = [[0,1], [0,-1], [1,0], [-1,0]];
-        const move = moves[Math.floor(Math.random() * moves.length)];
-        agent.x = Math.max(0, Math.min(2, agent.x + move[0]));
-        agent.y = Math.max(0, Math.min(2, agent.y + move[1]));
-        agent.locationName = getLocName(agent.x, agent.y);
-        update.action_log = `移动到了 ${agent.locationName}`;
-    }
-    
-    // 捡拾
-    if (act.action === "PICKUP" && act.target) {
-      const ground = world.mapResources[coord] || [];
-      const itemIndex = ground.findIndex(i => i.includes(act.target)); // 模糊匹配
-      if (itemIndex > -1) {
-        const item = ground[itemIndex];
-        ground.splice(itemIndex, 1);
-        agent.inventory.push(item);
-        world.mapResources[coord] = ground;
-        update.action_log = `捡起了 ${item}`;
-      }
-    }
-
-    // 进食
-    if (act.action === "EAT") {
-      const foodIndex = agent.inventory.findIndex(item => item.includes(act.target));
-      if (foodIndex > -1) {
-        agent.inventory.splice(foodIndex, 1);
-        agent.hunger = Math.max(0, agent.hunger - 30);
-        agent.hp = Math.min(100, agent.hp + 5);
-        update.action_log = `吃了 ${act.target}`;
-      }
-    }
-
-    // 建造
-    if (act.action === "BUILD" && coord === "1,1") {
-      const hasMat = agent.inventory.find(item => item.match(/木|石|铁|枝/));
-      if (hasMat) {
-        const matIndex = agent.inventory.indexOf(hasMat);
-        agent.inventory.splice(matIndex, 1);
-        const building = world.mapBuildings["1,1"];
-        building.progress = Math.min(100, building.progress + 10);
-        world.mapBuildings["1,1"] = building;
-        update.action_log = `消耗${hasMat}建设营地 (进度${building.progress}%)`;
-      }
-    }
-
-    // 代谢
-    agent.hunger = Math.min(100, agent.hunger + 3);
-    if (agent.hunger >= 90) agent.hp -= 5;
-    updates.push(update);
+  // --- STEP 3: 逻辑裁判 (Groq Key 1 - 兼职裁判长) ---
+  // 这是最核心的一步：处理冲突、战斗结算
+  let refereeUpdates = [];
+  try {
+      const refereeRes = await groq1.chat.completions.create({
+        model: "llama-3.3-70b-versatile", // 逻辑最强模型
+        messages: [{ 
+          role: "user", 
+          content: `
+            我是游戏后台裁判。请根据角色意图判定结果。
+            
+            角色意图: ${JSON.stringify(world.agents.map((a,i) => ({
+                id: a.id, name: a.name, job: a.job, 
+                action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
+            })))}
+            
+            判定逻辑：
+            1. **ATTACK**: 比如拳手打学生，拳手胜，学生扣15血；学生打消防员，可能无效或扣2血。
+            2. **STEAL**: 偷窃有概率失败，失败会被发现。
+            3. **普通行动**: 只要符合逻辑(有物品/在现场)即成功。
+            
+            返回 JSON 数组 (必须包含所有8个人):
+            [
+              {"id": 0, "log": "...", "hp_change": 0},
+              ...
+            ]
+          ` 
+        }],
+        response_format: { type: "json_object" }
+      });
+      const json = JSON.parse(refereeRes.choices[0].message.content);
+      refereeUpdates = Array.isArray(json) ? json : (json.updates || json.results || []);
+      // 容错：如果格式不对，兜底
+      if (refereeUpdates.length < 8) throw new Error("裁判返回数据缺失");
+  } catch(e) {
+      console.error("Referee Error:", e);
+      refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
   }
 
-  // --- STEP 4: 叙事裁判 ---
-  const judgeRes = await groqJudge.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ 
-      role: "user", 
-      content: `
-        写一段荒岛生存小说。
-        角色行为: ${JSON.stringify(updates.map((u,i) => ({name: world.agents[i].name, log: u.action_log})))}
-        当前环境: ${envData.description}
-        
-        要求：
-        1. 描写大家为了生存而忙碌（找吃、盖房）。
-        2. 300字以内，群像描写，富有文学性。
-        JSON: {"story": "..."}
-      ` 
-    }],
-    response_format: { type: "json_object" }
-  });
-  const storyData = JSON.parse(judgeRes.choices[0].message.content);
+  // --- STEP 4: 执行裁判结果 (写入数据库) ---
+  refereeUpdates.forEach(u => {
+      const agent = world.agents.find(a => a.id === u.id);
+      const rawAct = rawActions[u.id];
+      if (!agent) return;
 
-  // --- STEP 5: 社会八卦 ---
-  const socialRes = await groqSocial.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: `生成一条社会动态: ${JSON.stringify(updates)}。JSON: {"news":"..."}` }],
-    response_format: { type: "json_object" }
+      // 更新血量和日志
+      agent.hp = Math.max(0, Math.min(100, agent.hp + (u.hp_change || 0)));
+      agent.actionLog = u.log || rawAct.say; // 优先用裁判的描述
+      
+      // 物理世界更新 (辅助裁判)
+      const coord = `${agent.x},${agent.y}`;
+      
+      // 移动
+      if (rawAct.action === "MOVE") {
+         const moves = [[0,1], [0,-1], [1,0], [-1,0]];
+         const m = moves[Math.floor(Math.random()*moves.length)];
+         agent.x = Math.max(0, Math.min(2, agent.x+m[0]));
+         agent.y = Math.max(0, Math.min(2, agent.y+m[1]));
+         agent.locationName = getLocName(agent.x, agent.y);
+      }
+      
+      // 采集
+      if (rawAct.action === "PICKUP" && rawAct.target) {
+          const ground = world.mapResources[coord] || [];
+          const idx = ground.findIndex(i=>i.includes(rawAct.target));
+          if (idx > -1) {
+              ground.splice(idx, 1);
+              agent.inventory.push(ground[idx]); // 简化的字符串物品
+              world.mapResources[coord] = ground;
+          }
+      }
+      
+      // 进食
+      if (rawAct.action === "EAT") {
+          const idx = agent.inventory.findIndex(i=>i.includes(rawAct.target));
+          if (idx > -1) {
+              agent.inventory.splice(idx, 1);
+              agent.hunger = Math.max(0, agent.hunger - 30);
+              agent.hp = Math.min(100, agent.hp + 5);
+          }
+      }
+
+      // 代谢
+      agent.hunger = Math.min(100, agent.hunger + 3);
   });
+
+  // --- STEP 5: 叙事与新闻 (Groq Key 2 & SF Key 2) ---
+  // Groq 2 负责写小说，SF 2 负责写新闻，互不干扰
+  const [judgeRes, socialRes] = await Promise.all([
+      groq2.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于结果: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}` }],
+        response_format: { type: "json_object" }
+      }),
+      sfNews.chat.completions.create({
+        model: "Qwen/Qwen2.5-7B-Instruct",
+        messages: [{ role: "user", content: `生成一条社会大新闻: ${JSON.stringify(refereeUpdates)}。JSON: {"news":""}` }],
+        response_format: { type: "json_object" }
+      })
+  ]);
+
+  const storyData = JSON.parse(judgeRes.choices[0].message.content);
   const socialData = JSON.parse(socialRes.choices[0].message.content);
 
-  // 保存
+  // --- 保存 ---
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.description;
   world.socialNews = socialData.news;
-  world.logs.push(storyData.story);
+  world.logs.push(storyData.story || "...");
   
-  updates.forEach((u, i) => { world.agents[i].actionLog = u.action_log; });
-
-  if (world.logs.length > 50) world.logs.shift();
-  
+  if(world.logs.length > 50) world.logs.shift();
   world.markModified('mapResources');
   world.markModified('mapBuildings');
   world.markModified('agents');
