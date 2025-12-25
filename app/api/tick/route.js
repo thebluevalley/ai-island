@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import connectDB from '@/lib/db';
 import { World } from '@/lib/models';
 
-export const maxDuration = 60; // 允许函数运行 60秒
+export const maxDuration = 60;
 
 // --- 静态配置 ---
 const MAP_NAMES = { "0,0":"礁石","0,1":"浅滩","0,2":"沉船","1,0":"椰林","1,1":"广场","1,2":"溪流","2,0":"密林","2,1":"矿山","2,2":"高塔" };
@@ -21,24 +21,24 @@ export async function POST() {
   await connectDB();
 
   // ==========================================
-  // 1. 初始化 API 资源池 (The Resource Pool)
+  // 1. 初始化资源池 (11 Key Architecture)
   // ==========================================
   
-  // --- Groq 集群 (4节点: 3个工蜂 + 1个主脑) ---
+  // --- Groq 集群 (5节点: 4个工蜂 + 1个独立主脑) ---
   const groqCluster = [
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" }),
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" }),
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY_3, baseURL: "https://api.groq.com/openai/v1" }),
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY_4, baseURL: "https://api.groq.com/openai/v1" }), // The Matrix (主脑)
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" }), // Agents 0-2
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" }), // Agents 3-5
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_3, baseURL: "https://api.groq.com/openai/v1" }), // Agents 6-7
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_4, baseURL: "https://api.groq.com/openai/v1" }), // Agents 8-9
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY_5, baseURL: "https://api.groq.com/openai/v1" }), // THE MATRIX (独立主脑)
   ];
 
   // --- SiliconFlow 集群 (6节点: 文案池) ---
   const sfKeys = [
     process.env.SF_API_KEY_1, process.env.SF_API_KEY_2, process.env.SF_API_KEY_3,
     process.env.SF_API_KEY_4, process.env.SF_API_KEY_5, process.env.SF_API_KEY_6
-  ].filter(key => key); // 过滤掉未配置的空 Key
+  ].filter(key => key);
 
-  // 辅助函数：随机负载均衡
   const getRandomSF = () => {
     const randomKey = sfKeys[Math.floor(Math.random() * sfKeys.length)] || "dummy";
     return new OpenAI({ apiKey: randomKey, baseURL: "https://api.siliconflow.cn/v1" });
@@ -48,21 +48,21 @@ export async function POST() {
   if (!world) return NextResponse.json({error: "No world"});
 
   // ==========================================
-  // Step 1: 议会自治 (Groq 4 兼职处理)
+  // Step 1: 议会自治 (由 Groq 5 独立主脑负责)
   // ==========================================
   let councilLog = "";
-  // 触发条件：无在建工程 且 资源富裕 (木头>100)
+  // 触发条件：无在建工程 且 资源富裕
   if (!world.buildings.find(b => b.status === "blueprint") && world.globalResources.wood > 100 && Math.random() < 0.4) {
      try {
-       const res = await groqCluster[3].chat.completions.create({
+       // 使用 Groq 5 (Cluster[4]) 处理议会
+       const res = await groqCluster[4].chat.completions.create({
          model: "llama-3.3-70b-versatile",
-         messages: [{ role: "user", content: `资源:${JSON.stringify(world.globalResources)}. 现有建筑:${world.buildings.map(b=>b.name).join(",")}. 决定下个建筑(House/Warehouse/Clinic/Kitchen/Tower). JSON:{"decision":"...","reason":"..."}` }],
+         messages: [{ role: "user", content: `资源:${JSON.stringify(world.globalResources)}. 建筑:${world.buildings.map(b=>b.name).join(",")}. 决定下个建筑(House/Warehouse/Clinic/Kitchen/Tower). JSON:{"decision":"...","reason":"..."}` }],
          response_format: { type: "json_object" }
        });
        const council = JSON.parse(res.choices[0].message.content);
        const cost = BUILDING_COSTS[council.decision] || BUILDING_COSTS["House"];
        
-       // 扣除资源并添加蓝图
        world.globalResources.wood -= cost.wood;
        if(cost.stone) world.globalResources.stone -= cost.stone;
        world.buildings.push({ type: council.decision, name: cost.name, x: 1, y: 1, status: "blueprint", progress: 0, maxProgress: cost.time, desc: council.reason });
@@ -71,7 +71,7 @@ export async function POST() {
   }
 
   // ==========================================
-  // Step 2: 个体意图生成 (Groq 1-3 并行处理 10 人)
+  // Step 2: 个体意图生成 (Groq 1-4 并行处理)
   // ==========================================
   const getPrompt = (agent) => {
     return `你叫${agent.name},职业${agent.job}. HP${agent.hp}. 
@@ -89,23 +89,26 @@ export async function POST() {
     }).then(r => JSON.parse(r.choices[0].message.content)).catch(e=>({intent:"REST", say:"..."}))
   ));
 
-  const [intents1, intents2, intents3] = await Promise.all([
-    callAI(groqCluster[0], world.agents.slice(0, 4)), // Key 1: 负责 4 人
-    callAI(groqCluster[1], world.agents.slice(4, 7)), // Key 2: 负责 3 人
-    callAI(groqCluster[2], world.agents.slice(7, 10)) // Key 3: 负责 3 人
+  // 这里的切片逻辑更均匀了：3+3+2+2
+  const [intents1, intents2, intents3, intents4] = await Promise.all([
+    callAI(groqCluster[0], world.agents.slice(0, 3)), // Key 1: Agent 0-2
+    callAI(groqCluster[1], world.agents.slice(3, 6)), // Key 2: Agent 3-5
+    callAI(groqCluster[2], world.agents.slice(6, 8)), // Key 3: Agent 6-7
+    callAI(groqCluster[3], world.agents.slice(8, 10)) // Key 4: Agent 8-9
   ]);
-  const allIntents = [...intents1, ...intents2, ...intents3];
+  const allIntents = [...intents1, ...intents2, ...intents3, ...intents4];
 
   // ==========================================
-  // Step 3: 主脑仲裁与调度 (The Matrix - Groq 4)
+  // Step 3: 主脑仲裁 (Groq 5 独立主脑负责)
   // ==========================================
   let matrixReport = "";
   try {
     const npcStates = world.npcs.map(n => ({id:n.id, role:n.role, task:n.currentTask}));
     const agentRequests = world.agents.map((a, i) => ({ name: a.name, job: a.job, intent: allIntents[i].intent, say: allIntents[i].say }));
 
-    const matrixRes = await groqCluster[3].chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+    // 使用 Groq 5 (Cluster[4]) 处理最复杂的逻辑
+    const matrixRes = await groqCluster[4].chat.completions.create({
+      model: "llama-3.3-70b-versatile", // 70B 模型
       messages: [{ role: "user", content: `
         作为系统主脑，协调任务。
         当前蓝图: ${world.buildings.find(b=>b.status==='blueprint')?.name || "无"}.
@@ -128,16 +131,13 @@ export async function POST() {
     const matrixDecision = JSON.parse(matrixRes.choices[0].message.content);
     matrixReport = matrixDecision.world_events?.join(" ") || "系统运转正常";
 
-    // --- 应用判决 ---
-    
-    // 1. 更新 NPC 任务
+    // 应用 NPC 更新
     const updates = matrixDecision.npc_updates || [];
     world.npcs.forEach(npc => {
       const update = updates.find(u => u.id === npc.id);
       if (update) {
         npc.currentTask = update.task;
       } else {
-        // 兜底：闲置 NPC 随机干活
         if(!npc.currentTask.includes("建设")) {
             npc.currentTask = Math.random()>0.5 ? "采集食物" : "伐木";
             if (npc.currentTask === "采集食物") world.globalResources.food += 2;
@@ -145,7 +145,6 @@ export async function POST() {
         }
       }
       
-      // 建设进度逻辑
       if (npc.currentTask.includes("建设")) {
          const bp = world.buildings.find(b => b.status === "blueprint");
          if (bp) {
@@ -165,7 +164,6 @@ export async function POST() {
     const agent = world.agents[i];
     agent.actionLog = intent.say;
     agent.hunger += 1;
-    // 专家亲自干活加成
     if (intent.intent === "WORK" && (agent.job === "建筑师" || agent.job === "工匠")) {
         const bp = world.buildings.find(b => b.status === "blueprint");
         if (bp) bp.progress += 10;
@@ -180,7 +178,6 @@ export async function POST() {
   let story = "";
 
   try {
-    // 随机 Key 1: 生成环境
     const r1 = await getRandomSF().chat.completions.create({
       model: "Qwen/Qwen2.5-7B-Instruct",
       messages: [{role:"user", content: `Day${world.turn} ${timeNow}. 生成环境(30字). JSON:{"weather":"...","desc":"..."}`}],
@@ -188,7 +185,6 @@ export async function POST() {
     });
     envData = JSON.parse(cleanJson(r1.choices[0].message.content));
 
-    // 随机 Key 2: 生成小说
     const r2 = await getRandomSF().chat.completions.create({
        model: "Qwen/Qwen2.5-7B-Instruct",
        messages: [{role:"user", content: `写300字小说. 
@@ -202,13 +198,10 @@ export async function POST() {
      story = JSON.parse(cleanJson(r2.choices[0].message.content)).story;
   } catch(e) {
      console.error("Story Error", e);
-     // 错误保底信息
      story = `[通讯中断] 卫星信号受阻。\n当前状态：${matrixReport}\n错误信息：${e.message}`;
   }
 
-  // ==========================================
-  // 保存与返回
-  // ==========================================
+  // 保存
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.desc;
