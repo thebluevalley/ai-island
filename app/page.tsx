@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-// 引入 Lucide 图标 (Next.js 默认支持，无需额外安装，如果报错请告诉我)
+// 引入 Lucide 图标
 import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, Map as MapIcon, FileText, Users, Construction, RefreshCw } from 'lucide-react';
 
 // --- 类型定义 ---
@@ -18,8 +18,9 @@ const BUILD_OPTIONS = [
   { type: "Tower", name: "瞭望塔", cost: "木120 石80" }
 ];
 
-// --- 符号化头像组件 ---
-const SymbolAvatar = ({ job }: { job: string }) => {
+// --- 符号化头像组件 (修复：添加 name 属性定义) ---
+// 增加 name?: string 使得传入 name 不会报错，并将其用于 title 属性
+const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
   let Icon = Users;
   let color = "bg-stone-400";
 
@@ -34,7 +35,8 @@ const SymbolAvatar = ({ job }: { job: string }) => {
   else if (job.includes("占卜")) { Icon = Zap; color = "bg-purple-600"; }
 
   return (
-    <div className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 border border-white/20`}>
+    // 添加 title={name}，鼠标悬停时可以看到名字
+    <div title={name} className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 border border-white/20`}>
       <Icon size={20} strokeWidth={2.5} />
     </div>
   );
@@ -231,7 +233,6 @@ export default function Home() {
   );
 
   return (
-    // 关键：h-[100dvh] 确保在手机浏览器中填满屏幕且不被地址栏遮挡
     <div className="flex flex-col h-[100dvh] bg-[#e5e5e5] text-stone-800 font-sans overflow-hidden">
       
       {/* 桌面端布局 */}
@@ -252,9 +253,8 @@ export default function Home() {
         {mobileView === 'roster' && <RosterPanel />}
       </div>
 
-      {/* 移动端底部导航 (带 safe-area 适配) */}
+      {/* 移动端底部导航 */}
       <nav className="md:hidden h-14 bg-white border-t border-stone-200 flex justify-around items-center shrink-0 z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] relative">
-        {/* 顶部进度条 */}
         <div className="absolute top-0 left-0 h-0.5 bg-blue-500 transition-all duration-1000 ease-linear" style={{width: `${((20-nextRefresh)/20)*100}%`}}></div>
         
         <button onClick={() => setMobileView('logs')} className={`flex flex-col items-center justify-center w-16 h-full ${mobileView==='logs'?'text-blue-600':'text-stone-400'}`}>
