@@ -18,14 +18,13 @@ const SPAWN_RULES = {
   "2,1": ["石块", "燧石"], "0,2": ["废铁片", "塑料布"] 
 };
 
-// --- 更换为 Boring Avatars (Beam 风格) ---
-// 这是一个非常稳定且风格现代的头像源
-const AVATAR_BASE = "https://source.boringavatars.com/beam/120";
+// --- 更换为 Notion 手绘风格 (黑白线条，非常清晰) ---
+const AVATAR_BASE = "https://api.dicebear.com/9.x/notionists/svg";
 
 export async function POST() {
   await connectDB();
   
-  // --- 客户端初始化 (保持降级后的配置) ---
+  // --- 客户端初始化 ---
   const sfClient = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
@@ -35,29 +34,29 @@ export async function POST() {
   
   let world = await World.findOne();
   
-  // --- 初始化世界 (更新头像配色) ---
+  // --- 初始化世界 (配置 Notion 头像) ---
   if (!world || !world.agents || world.agents.length < 8) {
      if(world) await World.deleteMany({});
      world = await World.create({
         turn: 1, weather: "晴朗", mapResources: {}, mapBuildings: {"1,1":{name:"营地",progress:0,max:100}},
         agents: [
-            // 使用 name 作为 seed，colors 指定配色，保证每次生成都一样但每个人不同
+            // seed 决定脸型，flip 翻转方向增加变化
             { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/ZhangWei?colors=264653,2a9d8f,e9c46a,f4a261,e76f51` },
+              avatarUrl: `${AVATAR_BASE}?seed=Felix&flip=true` },
             { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/LinXiaoyun?colors=e0fbfc,c2dfe3,9db4c0,5c6b73,253237` },
+              avatarUrl: `${AVATAR_BASE}?seed=Lydia` },
             { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/WangQiang?colors=003049,d62828,f77f00,fcbf49,eae2b7` },
+              avatarUrl: `${AVATAR_BASE}?seed=Robert&glassesProbability=100` },
             { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/ChenZimo?colors=cdb4db,ffc8dd,ffafcc,bde0fe,a2d2ff` },
+              avatarUrl: `${AVATAR_BASE}?seed=Sam` },
             { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/OldZhao?colors=606c38,283618,fefae0,dda15e,bc6c25` },
+              avatarUrl: `${AVATAR_BASE}?seed=Bear&beardProbability=100` },
             { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/LisaNurse?colors=ffcdb2,ffb4a2,e5989b,b5838d,6d6875` },
+              avatarUrl: `${AVATAR_BASE}?seed=Jocelyn` },
             { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/AhBiao?colors=540d6e,ee4266,ffd23f,3bceac,0ead69` },
+              avatarUrl: `${AVATAR_BASE}?seed=Milo` },
             { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}/Shenpo?colors=7400b8,6930c3,5e60ce,5390d9,4ea8de` }
+              avatarUrl: `${AVATAR_BASE}?seed=Destiny` }
         ],
         logs: ["【序幕】生存实验开始..."]
      });
@@ -90,7 +89,7 @@ export async function POST() {
     envData = JSON.parse(res.choices[0].message.content);
   } catch(e) {}
 
-  // --- STEP 2: 角色决策 (4 Groq Keys - 8b-instant) ---
+  // --- STEP 2: 角色决策 (8b-instant) ---
   const getInfo = (agent) => {
     const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
     const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}`).join(", ");
@@ -101,11 +100,6 @@ export async function POST() {
     你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
     环境: ${envData.description}。
     感知: ${getInfo(agent)}
-    规则:
-    1. 交互: 身边有人 TALK, GIVE, ATTACK, STEAL。
-    2. 生存: 饿了EAT。有东西PICKUP。
-    3. 建设: 中央广场BUILD。
-    4. 移动: MOVE。
     JSON: {"action": "类型", "target": "目标", "say": "台词"}
   `;
 
@@ -125,7 +119,7 @@ export async function POST() {
   ]);
   const rawActions = [...act1, ...act2, ...act3, ...act4];
 
-  // --- STEP 3: 裁判 (Groq 1 - 8b-instant) ---
+  // --- STEP 3: 裁判 (Groq 1) ---
   let refereeUpdates = [];
   try {
       const refereeRes = await groq1.chat.completions.create({
@@ -133,7 +127,7 @@ export async function POST() {
         messages: [{ 
           role: "user", 
           content: `
-            我是裁判。判定结果。
+            裁判。判定结果。
             意图: ${JSON.stringify(world.agents.map((a,i) => ({
                 id: a.id, name: a.name, job: a.job, 
                 action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
@@ -195,7 +189,7 @@ export async function POST() {
   const [judgeRes, socialRes] = await Promise.all([
       sfClient.chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
-        messages: [{ role: "user", content: `写一段荒岛小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
+        messages: [{ role: "user", content: `写荒岛小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
         response_format: { type: "json_object" }
       }),
       sfClient.chat.completions.create({
