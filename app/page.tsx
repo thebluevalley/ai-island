@@ -12,7 +12,7 @@ type Agent = {
   inventory: string[];
   locationName: string;
   actionLog: string;
-  avatarUrl: string;
+  avatarUrl?: string; // 标记为可选
 };
 
 export default function Home() {
@@ -20,8 +20,8 @@ export default function Home() {
   const [envInfo, setEnvInfo] = useState({
     weather: "...",
     time: "...",
-    desc: "正在扫描...",
-    news: "暂无社会动态", 
+    desc: "正在建立连接...",
+    news: "暂无动态", 
     day: 1
   });
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -50,7 +50,7 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("⚠️ 警告：确定要重置世界吗？")) return;
+    if (!confirm("⚠️ 警告：确定要重置世界吗？这会清空当前进度。")) return;
     setIsPaused(true);
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
@@ -80,7 +80,7 @@ export default function Home() {
            <button onClick={() => setIsPaused(!isPaused)} className="text-xs border px-2 py-1 rounded bg-white hover:bg-stone-50">
              {isPaused ? "▶" : "⏸"}
            </button>
-           <button onClick={handleReset} className="text-xs text-red-500 hover:text-red-700 px-2">↺</button>
+           <button onClick={handleReset} className="text-xs text-red-500 hover:text-red-700 px-2 font-bold border border-red-200 bg-red-50 rounded h-6 w-6 flex items-center justify-center">↺</button>
         </div>
       </header>
 
@@ -113,26 +113,35 @@ export default function Home() {
         {/* 右栏：8人状态 + 头像 */}
         <aside className="w-80 bg-white border-l border-stone-200 flex flex-col z-20">
           <div className="p-3 border-b border-stone-100 bg-stone-50 text-[10px] font-bold text-stone-400 uppercase text-center">
-            8 Survivors Online
+            Survivors Status
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {agents.map(agent => (
               <div key={agent.id} className="bg-white border border-stone-200 rounded-lg p-3 shadow-sm flex flex-col gap-2 relative overflow-hidden">
                 <div className="flex justify-between items-start relative z-10">
                   <div className="flex items-center gap-3">
-                    <div className="relative w-10 h-10 rounded-full overflow-hidden border border-stone-100 shadow-sm shrink-0 bg-stone-50">
+                    
+                    {/* 头像容器 - 修复版 */}
+                    <div className="relative w-10 h-10 rounded-full overflow-hidden border border-stone-200 shadow-sm shrink-0 bg-stone-100 flex items-center justify-center">
                       {agent.avatarUrl ? (
                         <Image 
                           src={agent.avatarUrl} 
                           alt={agent.name}
                           fill
                           className="object-cover"
-                          unoptimized 
+                          unoptimized // 关键：DiceBear 是外部 SVG，不需要 Next.js 优化
+                          onError={(e) => {
+                            // 图片加载失败时隐藏图片（显示背景色）
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                          }}
                         />
                       ) : (
-                        <div className="w-full h-full bg-gray-200" />
+                        // 如果没有 URL，显示名字首字
+                        <span className="text-xs font-bold text-stone-400">{agent.name[0]}</span>
                       )}
                     </div>
+
                     <div>
                         <div className="font-bold text-sm text-stone-800">{agent.name}</div>
                         <div className="text-[10px] font-normal text-stone-500">{agent.job}</div>

@@ -9,9 +9,9 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
-    dangerouslyAllowSVG: true, // 允许 SVG 头像
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    dangerouslyAllowSVG: true, // 允许 DiceBear 的 SVG 格式
   },
+  // 删除之前的 contentSecurityPolicy，因为它拦截了图片请求
 };
 
 export default nextConfig;
