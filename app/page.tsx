@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
-// 定义 Agent 的数据结构，方便后续使用
+// 定义数据类型，防止 TypeScript 报错
 type Agent = {
   id: number;
   name: string;
@@ -12,7 +12,7 @@ type Agent = {
 
 export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
-  // 预设一些初始数据，这样页面一加载就不会是空的，方便调试样式
+  // 预置数据用于展示 UI 效果，防止页面空白
   const [agents, setAgents] = useState<Agent[]>([
     { id: 0, name: "铁头", hp: 100, hunger: 20, inventory: ["木棍"] },
     { id: 1, name: "医生", hp: 90, hunger: 15, inventory: ["绷带"] },
@@ -34,13 +34,11 @@ export default function Home() {
       setLoading(true);
       
       try {
-        // 1. 触发演化
         const res = await fetch('/api/tick', { method: 'POST' });
         const data = await res.json();
         
         if (data.success) {
           setLogs(prev => [...prev, data.log]);
-          // 假设后端也会返回最新的 agents 状态
           if (data.agents) {
             setAgents(data.agents);
           }
@@ -50,45 +48,45 @@ export default function Home() {
       } finally {
         setLoading(false);
       }
-    }, 10000); // 10秒一次心跳
+    }, 10000); // 10秒刷新一次
 
     return () => clearInterval(timer);
   }, [loading]);
 
   return (
-    // 主容器：浅色背景，深色文字
-    <main className="min-h-screen bg-gray-50 text-gray-900 font-mono text-sm flex flex-col">
+    // 主容器：浅色背景(bg-gray-50)，深色文字(text-gray-900)
+    <main className="flex flex-col h-[100dvh] bg-gray-50 text-gray-900 font-mono text-sm overflow-hidden">
       
-      {/* --- 上半部分：日志滚动区 --- */}
-      {/* pb-48 是为了给底部的固定栏留出空间 */}
-      <div className="flex-1 overflow-y-auto p-4 pb-48 space-y-3">
+      {/* --- 上半部分：标题与日志区域 --- */}
+      {/* flex-1 让它占据剩余所有空间，overflow-y-auto 允许内部滚动 */}
+      <div className="flex-1 overflow-y-auto p-4 pb-48">
         
-        {/* 标题栏：浅灰边框 */}
-        <div className="border-b border-gray-200 pb-3 mb-4">
-          <h1 className="text-xl font-bold tracking-wider">{'>>>'} AI_ISLAND_SIM_V1.0</h1>
+        {/* 标题栏：清晰分隔，不再重叠 */}
+        <div className="border-b border-gray-200 pb-4 mb-4 bg-gray-50 sticky top-0 z-10">
+          <h1 className="text-xl font-bold tracking-wider text-black">
+            {'>>>'} AI_ISLAND_SIM
+          </h1>
           <div className="flex items-center space-x-2 text-xs text-gray-500 mt-1">
             <span className={`inline-block w-2 h-2 rounded-full ${loading ? 'bg-blue-500 animate-ping' : 'bg-green-500'}`}></span>
             <span>STATUS: {loading ? "CALCULATING..." : "ONLINE"}</span>
           </div>
         </div>
         
-        {/* 初始系统日志 */}
-        <p className="text-gray-600">[系统] 卫星信号已连接。</p>
-        <p className="text-gray-600">[系统] 实验体生命体征监测中...</p>
-
-        {/* 动态日志渲染：使用深色左边框做强调 */}
-        <div className="space-y-2">
+        {/* 日志内容：左侧加深色线条装饰 */}
+        <div className="space-y-3">
+          {logs.length === 0 && <p className="text-gray-400 italic">正在等待卫星信号连接...</p>}
+          
           {logs.map((log, i) => (
-            <div key={i} className="pl-3 border-l-2 border-gray-300 py-1 leading-relaxed bg-white shadow-sm rounded-r-md">
-              <p>{log}</p>
+            <div key={i} className="pl-3 border-l-2 border-gray-300 py-1 bg-white shadow-sm rounded-r-md px-2">
+              <p className="leading-relaxed">{log}</p>
             </div>
           ))}
         </div>
 
-        {/* Loading 状态：使用柔和的蓝色 */}
+        {/* Loading 提示 */}
         {loading && (
-          <p className="animate-pulse text-blue-600 font-medium pt-2">
-            {'>>>'} 正在推演下一回合平行宇宙...
+          <p className="animate-pulse text-blue-600 font-medium pt-4 text-center">
+            {'>>>'} 平行宇宙推演中...
           </p>
         )}
         
@@ -97,27 +95,34 @@ export default function Home() {
       </div>
 
       {/* --- 下半部分：底部固定仪表盘 --- */}
-      {/* 使用白色半透明背景和顶部边框，营造层次感 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 p-4 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <h2 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest">实验体状态监控</h2>
+      {/* 白色半透明背景，顶部加阴影，视觉上浮在日志上方 */}
+      <div className="shrink-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 pb-8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
+        <h2 className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-widest text-center">
+          —— 实验体状态监控 ——
+        </h2>
         
-        {/* 使用 Grid 布局彻底解决重叠问题，2列整齐排列 */}
+        {/* 使用 Grid 布局，强制分为 2 列，防止卡片重叠 */}
         <div className="grid grid-cols-2 gap-3">
            {agents.map(agent => (
-             // 单个角色卡片：纯白背景，圆角，轻微阴影
-             <div key={agent.id} className="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex flex-col space-y-1">
-               <div className="flex justify-between items-center">
-                 <span className="font-bold text-base">{agent.name}</span>
-                 {/* 血量根据数值变色 */}
-                 <span className={`font-mono font-bold ${agent.hp > 50 ? 'text-green-600' : 'text-red-600'}`}>
+             <div key={agent.id} className="bg-white border border-gray-100 p-3 rounded-xl shadow-sm flex flex-col space-y-1 relative overflow-hidden group">
+               {/* 一个淡淡的背景装饰 */}
+               <div className="absolute top-0 right-0 w-8 h-8 bg-gray-50 rounded-bl-full -mr-2 -mt-2 group-hover:bg-blue-50 transition-colors"></div>
+               
+               <div className="flex justify-between items-center relative z-10">
+                 <span className="font-bold text-base text-gray-800">{agent.name}</span>
+                 {/* 血量根据数值变色：高血量绿色，低血量红色 */}
+                 <span className={`font-mono font-bold ${agent.hp > 50 ? 'text-emerald-600' : 'text-rose-600'}`}>
                    HP:{agent.hp}
                  </span>
                </div>
-               <div className="text-xs text-gray-500 flex justify-between items-center bg-gray-50 p-1 rounded">
-                 <span className="truncate max-w-[60%]">
-                   🎒 {agent.inventory.length > 0 ? agent.inventory.join(',') : '空'}
-                 </span>
-                 <span>🍗 饥饿:{agent.hunger}</span>
+               
+               <div className="text-xs text-gray-500 flex flex-col space-y-1 mt-1">
+                 <div className="flex justify-between">
+                   <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 truncate max-w-[70%]">
+                     {agent.inventory.length > 0 ? agent.inventory.join(' ') : '空'}
+                   </span>
+                   <span>饱食:{100 - agent.hunger}%</span>
+                 </div>
                </div>
              </div>
            ))}
