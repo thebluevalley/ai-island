@@ -4,12 +4,15 @@ import connectDB from '@/lib/db';
 import { World } from '@/lib/models';
 
 // --- 初始化 4 个 AI 客户端 ---
+// 两个 Groq 客户端 (用于环境和裁判)
 const groqEnv = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1, baseURL: "https://api.groq.com/openai/v1" });
 const groqJudge = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2, baseURL: "https://api.groq.com/openai/v1" });
+
+// 两个 SiliconFlow 客户端 (用于 4 个 AI 角色)
 const sfTeamA = new OpenAI({ apiKey: process.env.SF_API_KEY_1, baseURL: "https://api.siliconflow.cn/v1" });
 const sfTeamB = new OpenAI({ apiKey: process.env.SF_API_KEY_2, baseURL: "https://api.siliconflow.cn/v1" });
 
-export const maxDuration = 30; // 尝试申请 Vercel 的超时时间延长 (Pro版有效，免费版尽力而为)
+export const maxDuration = 30; // 尝试申请延长超时时间
 
 export async function POST() {
   await connectDB();
@@ -23,17 +26,18 @@ export async function POST() {
       weather: "阳光明媚",
       logs: ["【系统】幸存者们在海滩上醒来，实验开始了。"],
       agents: [
-        { id: 0, name: "铁头", personality: "暴躁，喜欢抢劫", inventory: ["木棍"] },
-        { id: 1, name: "医生", personality: "善良，想救人", inventory: ["绷带"] },
-        { id: 2, name: "骗子", personality: "狡猾，喜欢挑拨", inventory: ["硬币"] },
-        { id: 3, name: "仓鼠", personality: "胆小，只囤食物", inventory: ["饼干"] }
+        { id: 0, name: "铁头", personality: "暴躁，喜欢抢劫", inventory: ["木棍"], hp: 100, hunger: 20 },
+        { id: 1, name: "医生", personality: "善良，想救人", inventory: ["绷带"], hp: 90, hunger: 15 },
+        { id: 2, name: "骗子", personality: "狡猾，喜欢挑拨", inventory: ["硬币"], hp: 85, hunger: 10 },
+        { id: 3, name: "仓鼠", personality: "胆小，只囤食物", inventory: ["饼干"], hp: 100, hunger: 0 }
       ]
     });
   }
 
   // --- STEP 1: Groq 环境生成 ---
+  // 修复点：将 llama-3.1 改为 llama-3.3-70b-versatile
   const envRes = await groqEnv.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model: "llama-3.3-70b-versatile",
     messages: [{ role: "user", content: `当前回合:${world.turn}，天气:${world.weather}。请生成本回合的随机天气变化和突发事件(简短)。返回JSON格式: {"weather": "string", "event": "string"}` }],
     response_format: { type: "json_object" }
   });
@@ -64,8 +68,9 @@ export async function POST() {
   ];
 
   // --- STEP 3: Groq 裁判结算 ---
+  // 修复点：将 llama-3.1 改为 llama-3.3-70b-versatile
   const judgeRes = await groqJudge.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model: "llama-3.3-70b-versatile",
     messages: [{ 
       role: "user", 
       content: `
@@ -94,16 +99,28 @@ export async function POST() {
   world.logs.push(`[第${world.turn}回合] ${result.story}`);
   
   // 更新具体数值
-  result.updates.forEach((u, index) => {
-    world.agents[index].hp += u.hp_change;
-    world.agents[index].hunger += u.hunger_change;
-    // 简单的物品逻辑可以后续完善，防止 JSON 结构过于复杂导致 AI 犯错
-  });
+  if (result.updates && Array.isArray(result.updates)) {
+      result.updates.forEach((u, index) => {
+        if(world.agents[index]) {
+            world.agents[index].hp = Math.max(0, Math.min(100, world.agents[index].hp + (u.hp_change || 0)));
+            world.agents[index].hunger = Math.max(0, Math.min(100, world.agents[index].hunger + (u.hunger_change || 0)));
+        }
+      });
+  }
 
   // 只保留最近 50 条日志
   if (world.logs.length > 50) world.logs.shift();
   
+  // 必须使用 markModified 告诉 mongoose 数组/对象已更改，否则有时不会保存
+  world.markModified('agents');
+  world.markModified('logs');
+  
   await world.save();
 
-  return NextResponse.json({ success: true, log: result.story });
+  // 返回给前端的数据包含最新的 logs 和 agents，方便 UI 刷新
+  return NextResponse.json({ 
+      success: true, 
+      log: `[第${world.turn}回合] ${result.story}`,
+      agents: world.agents 
+  });
 }
