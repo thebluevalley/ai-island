@@ -5,7 +5,6 @@ import { World } from '@/lib/models';
 
 export const maxDuration = 60;
 
-// --- 基础配置 ---
 const MAP_LOCATIONS = {
   "0,0": "北岸礁石", "0,1": "浅滩", "0,2": "沉船遗迹",
   "1,0": "椰林",   "1,1": "中央广场", "1,2": "淡水溪流",
@@ -19,17 +18,16 @@ const SPAWN_RULES = {
   "2,1": ["石块", "燧石"], "0,2": ["废铁片", "塑料布"] 
 };
 
-// 头像 API 前缀
-const AVATAR_BASE = "https://api.dicebear.com/7.x/adventurer/svg";
+// --- 更换为 Boring Avatars (Beam 风格) ---
+// 这是一个非常稳定且风格现代的头像源
+const AVATAR_BASE = "https://source.boringavatars.com/beam/120";
 
 export async function POST() {
   await connectDB();
   
-  // --- 1. 客户端初始化 ---
-  // SF: 负责环境、新闻、以及【写小说】(利用中文优势)
+  // --- 客户端初始化 (保持降级后的配置) ---
   const sfClient = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   
-  // Groq: 负责高频逻辑决策 (全部改用 8b-instant 以避免 70b 限流)
   const groq1 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_1 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq2 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_2 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   const groq3 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_3 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
@@ -37,28 +35,29 @@ export async function POST() {
   
   let world = await World.findOne();
   
-  // --- 初始化世界 (含头像配置) ---
+  // --- 初始化世界 (更新头像配色) ---
   if (!world || !world.agents || world.agents.length < 8) {
      if(world) await World.deleteMany({});
      world = await World.create({
         turn: 1, weather: "晴朗", mapResources: {}, mapBuildings: {"1,1":{name:"营地",progress:0,max:100}},
         agents: [
+            // 使用 name 作为 seed，colors 指定配色，保证每次生成都一样但每个人不同
             { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=ZhangWei&backgroundColor=b6e3f4` },
+              avatarUrl: `${AVATAR_BASE}/ZhangWei?colors=264653,2a9d8f,e9c46a,f4a261,e76f51` },
             { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=LinXiaoyun&backgroundColor=d1f4e6` },
+              avatarUrl: `${AVATAR_BASE}/LinXiaoyun?colors=e0fbfc,c2dfe3,9db4c0,5c6b73,253237` },
             { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=WangQiang&backgroundColor=ffdfba&glasses=sunglasses` },
+              avatarUrl: `${AVATAR_BASE}/WangQiang?colors=003049,d62828,f77f00,fcbf49,eae2b7` },
             { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=ChenZimo&backgroundColor=c0aede` },
+              avatarUrl: `${AVATAR_BASE}/ChenZimo?colors=cdb4db,ffc8dd,ffafcc,bde0fe,a2d2ff` },
             { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=OldZhao&backgroundColor=f8fdcf` },
+              avatarUrl: `${AVATAR_BASE}/OldZhao?colors=606c38,283618,fefae0,dda15e,bc6c25` },
             { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=LisaNurse&backgroundColor=ffd1dc` },
+              avatarUrl: `${AVATAR_BASE}/LisaNurse?colors=ffcdb2,ffb4a2,e5989b,b5838d,6d6875` },
             { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=AhBiao&backgroundColor=ffb3ba` },
+              avatarUrl: `${AVATAR_BASE}/AhBiao?colors=540d6e,ee4266,ffd23f,3bceac,0ead69` },
             { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场",
-              avatarUrl: `${AVATAR_BASE}?seed=Shenpo&backgroundColor=e0c3fc` }
+              avatarUrl: `${AVATAR_BASE}/Shenpo?colors=7400b8,6930c3,5e60ce,5390d9,4ea8de` }
         ],
         logs: ["【序幕】生存实验开始..."]
      });
@@ -91,7 +90,7 @@ export async function POST() {
     envData = JSON.parse(res.choices[0].message.content);
   } catch(e) {}
 
-  // --- STEP 2: 角色决策 (4 Groq Keys - 全部使用 8b-instant) ---
+  // --- STEP 2: 角色决策 (4 Groq Keys - 8b-instant) ---
   const getInfo = (agent) => {
     const ground = (world.mapResources[`${agent.x},${agent.y}`] || []).join(", ") || "无";
     const people = world.agents.filter(a => a.id !== agent.id && a.x === agent.x && a.y === agent.y).map(n => `${n.name}`).join(", ");
@@ -102,19 +101,17 @@ export async function POST() {
     你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
     环境: ${envData.description}。
     感知: ${getInfo(agent)}
-    
-    决策规则:
+    规则:
     1. 交互: 身边有人 TALK, GIVE, ATTACK, STEAL。
     2. 生存: 饿了EAT。有东西PICKUP。
     3. 建设: 中央广场BUILD。
     4. 移动: MOVE。
-    
-    返回JSON: {"action": "动作类型", "target": "目标", "say": "台词"}
+    JSON: {"action": "类型", "target": "目标", "say": "台词"}
   `;
 
   const callActors = (client, list) => Promise.all(list.map(a => 
     client.chat.completions.create({
-      model: "llama-3.1-8b-instant", // 使用 8b 模型，速度快且不限流
+      model: "llama-3.1-8b-instant",
       messages: [{role:"user", content: getPrompt(a)}],
       response_format: { type: "json_object" }
     }).then(r => JSON.parse(r.choices[0].message.content)).catch(()=>({action:"TALK",target:"...",say:"..."}))
@@ -128,45 +125,36 @@ export async function POST() {
   ]);
   const rawActions = [...act1, ...act2, ...act3, ...act4];
 
-  // --- STEP 3: 逻辑裁判 (Groq Key 1 - 降级为 8b-instant) ---
-  // 8B 模型的逻辑能力足够处理战斗判断，且配额更多
+  // --- STEP 3: 裁判 (Groq 1 - 8b-instant) ---
   let refereeUpdates = [];
   try {
       const refereeRes = await groq1.chat.completions.create({
-        model: "llama-3.1-8b-instant", // 降级以避开 70b 限流
+        model: "llama-3.1-8b-instant",
         messages: [{ 
           role: "user", 
           content: `
-            我是游戏裁判。根据意图判定结果。
+            我是裁判。判定结果。
             意图: ${JSON.stringify(world.agents.map((a,i) => ({
                 id: a.id, name: a.name, job: a.job, 
                 action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
             })))}
-            
-            规则：
-            1. ATTACK: 比较战斗力(如拳手>学生)，败者扣血。
-            2. STEAL: 概率失败。
-            3. 其他: 成功。
-            
-            返回 JSON: { "updates": [{"id": 0, "log": "...", "hp_change": 0}, ...] }
+            JSON: { "updates": [{"id": 0, "log": "...", "hp_change": 0}, ...] }
           ` 
         }],
         response_format: { type: "json_object" }
       });
       const json = JSON.parse(refereeRes.choices[0].message.content);
       refereeUpdates = json.updates || json.results || [];
-      
       if (refereeUpdates.length < 8) {
           world.agents.forEach(a => {
               if(!refereeUpdates.find(u=>u.id===a.id)) refereeUpdates.push({id:a.id, log:rawActions[a.id].say, hp_change:0});
           });
       }
   } catch(e) {
-      console.error("Referee Error:", e);
       refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
   }
 
-  // --- STEP 4: 执行更新 ---
+  // --- STEP 4: 执行 ---
   refereeUpdates.forEach(u => {
       const agent = world.agents.find(a => a.id === u.id);
       const rawAct = rawActions[u.id];
@@ -203,8 +191,7 @@ export async function POST() {
       agent.hunger = Math.min(100, agent.hunger + 3);
   });
 
-  // --- STEP 5: 叙事 & 新闻 (转移至 SiliconFlow) ---
-  // 关键改动：把写小说的任务交给 SiliconFlow (Qwen)，它的中文更好，且不占 Groq 配额
+  // --- STEP 5: 叙事 & 新闻 (SiliconFlow) ---
   const [judgeRes, socialRes] = await Promise.all([
       sfClient.chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
@@ -221,19 +208,16 @@ export async function POST() {
   const storyData = JSON.parse(judgeRes.choices[0].message.content);
   const socialData = JSON.parse(socialRes.choices[0].message.content);
 
-  // 保存
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.description;
   world.socialNews = socialData.news;
   world.logs.push(storyData.story || "...");
-  
   if(world.logs.length > 50) world.logs.shift();
   world.markModified('mapResources');
   world.markModified('mapBuildings');
   world.markModified('agents');
   world.markModified('logs');
-  
   await world.save();
 
   return NextResponse.json({ success: true, world });

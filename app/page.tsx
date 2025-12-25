@@ -11,12 +11,12 @@ type Agent = {
   inventory: string[];
   locationName: string;
   actionLog: string;
-  avatarUrl?: string; // 可能是空的
+  avatarUrl?: string;
 };
 
-// 备用头像生成器 (如果数据库里没有URL，就用这个临时生成)
-const getFallbackAvatar = (name: string, seed: string) => {
-  return `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}&backgroundColor=e5e7eb`;
+// 备用头像：使用 Boring Avatars Beam 风格
+const getFallbackAvatar = (name: string) => {
+  return `https://source.boringavatars.com/beam/120/${name}?colors=264653,2a9d8f,e9c46a,f4a261,e76f51`;
 };
 
 export default function Home() {
@@ -24,7 +24,7 @@ export default function Home() {
   const [envInfo, setEnvInfo] = useState({
     weather: "--",
     time: "--",
-    desc: "正在读取生存记录...",
+    desc: "读取中...",
     news: "...", 
     day: 1
   });
@@ -32,7 +32,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  // 获取数据
   const fetchData = async () => {
      if (loading || isPaused) return;
      setLoading(true);
@@ -54,7 +53,7 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("⚠️ 确定要重置世界吗？进度将丢失。")) return;
+    if (!confirm("⚠️ 确定要重置世界吗？")) return;
     setIsPaused(true);
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
@@ -67,193 +66,134 @@ export default function Home() {
   }, [isPaused]);
 
   return (
-    // 全局：浅色背景 (Stone-100)，文字深灰 (Stone-800)
-    <div className="flex flex-col h-[100dvh] w-full bg-[#f5f5f4] text-stone-800 font-sans overflow-hidden">
+    <div className="flex flex-col h-[100dvh] w-full bg-[#f3f4f6] text-slate-800 font-sans overflow-hidden">
       
-      {/* --- 顶部导航栏 (干净的白色) --- */}
-      <header className="shrink-0 h-16 bg-white border-b border-stone-200 px-6 flex justify-between items-center z-30 shadow-sm">
+      {/* 顶部栏 */}
+      <header className="shrink-0 h-14 bg-white border-b border-slate-200 px-6 flex justify-between items-center shadow-sm z-30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-stone-800 text-white rounded-lg flex items-center justify-center font-bold font-serif text-lg">AI</div>
+          <div className="bg-slate-800 text-white px-3 py-1 rounded font-bold text-lg tracking-wider">LOG</div>
           <div>
-            <h1 className="font-bold tracking-wider text-stone-800 text-lg leading-none uppercase">Island Log</h1>
-            <p className="text-[10px] text-stone-400 font-mono tracking-widest mt-0.5">SURVIVAL SIMULATOR</p>
+            <h1 className="font-bold text-slate-800 text-sm uppercase tracking-widest">Survival Sim</h1>
+            <p className="text-[10px] text-slate-400">STATUS: {loading ? 'SYNCING...' : 'ONLINE'}</p>
           </div>
         </div>
-
-        {/* 顶部新闻条 */}
-        <div className="flex-1 mx-8 hidden md:flex items-center bg-stone-50 rounded-full px-5 py-2 border border-stone-100 shadow-inner">
-           <span className="text-[10px] font-bold text-amber-600 mr-3 shrink-0 tracking-widest uppercase">Latest News</span>
-           <span className="text-xs text-stone-600 truncate font-medium">{envInfo.news}</span>
+        <div className="flex-1 mx-8 hidden md:flex items-center bg-slate-50 rounded-full px-4 py-1.5 border border-slate-200">
+           <span className="text-[10px] font-bold text-blue-600 mr-3 shrink-0 uppercase">News</span>
+           <span className="text-xs text-slate-600 truncate">{envInfo.news}</span>
         </div>
-
-        <div className="flex items-center gap-3">
-           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-colors ${loading ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-white border-stone-200 text-stone-400'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-500 animate-ping' : 'bg-emerald-400'}`}></div>
-              {loading ? "SYNCING..." : "ONLINE"}
-           </div>
-           
-           <button onClick={() => setIsPaused(!isPaused)} className="h-9 px-4 rounded-lg bg-white hover:bg-stone-50 border border-stone-200 text-stone-600 text-xs font-bold transition-all shadow-sm">
-             {isPaused ? "▶ 继续" : "⏸ 暂停"}
+        <div className="flex gap-2">
+           <button onClick={() => setIsPaused(!isPaused)} className="px-3 py-1 rounded border border-slate-300 bg-white text-xs hover:bg-slate-50">
+             {isPaused ? "▶ Resume" : "⏸ Pause"}
            </button>
-           <button onClick={handleReset} className="h-9 w-9 flex items-center justify-center rounded-lg bg-white hover:bg-red-50 border border-stone-200 hover:border-red-200 text-red-500 transition-all shadow-sm" title="重置世界">
-             ↺
+           <button onClick={handleReset} className="px-3 py-1 rounded border border-red-200 bg-red-50 text-red-500 text-xs hover:bg-red-100">
+             Reset
            </button>
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
         
-        {/* --- 左栏：环境信息 (HUD) --- */}
-        <aside className="w-72 bg-[#fafaf9] border-r border-stone-200 hidden md:flex flex-col z-10">
-           <div className="p-6 space-y-8">
-             {/* 天气卡片 */}
-             <div className="bg-white p-6 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-stone-100">
-               <div className="flex justify-between items-start mb-2">
-                 <span className="text-4xl">🌤</span>
-                 <div className="text-right">
-                   <div className="text-2xl font-bold text-stone-800">{envInfo.weather}</div>
-                   <div className="text-xs font-mono text-stone-400 uppercase tracking-widest">Day {envInfo.day} · {envInfo.time}</div>
-                 </div>
-               </div>
-             </div>
-             
-             {/* 环境描写 - 引用风格 */}
-             <div>
-               <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                 <span className="w-1 h-3 bg-stone-300 block"></span>
-                 Current Atmosphere
-               </h3>
-               <div className="relative pl-4 border-l-2 border-stone-200 py-1">
-                 <p className="text-sm text-stone-600 leading-7 font-serif italic">
-                   “{envInfo.desc}”
-                 </p>
-               </div>
-             </div>
-
-             {/* 装饰性信息 */}
-             <div className="mt-auto pt-6 border-t border-stone-200">
-                <div className="flex justify-between text-[10px] text-stone-400 font-mono mb-1">
-                  <span>SIGNAL STRENGTH</span>
-                  <span>100%</span>
-                </div>
-                <div className="w-full bg-stone-200 h-1 rounded-full overflow-hidden">
-                  <div className="bg-emerald-400 h-full w-full"></div>
-                </div>
-             </div>
+        {/* 左栏：环境 */}
+        <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col p-6 space-y-6">
+           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center">
+             <div className="text-4xl mb-2">🌤</div>
+             <div className="text-xl font-bold text-slate-700">{envInfo.weather}</div>
+             <div className="text-xs text-slate-400 font-mono mt-1">DAY {envInfo.day} - {envInfo.time}</div>
+           </div>
+           <div>
+             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Atmosphere</h3>
+             <p className="text-sm text-slate-600 leading-6 italic font-serif">“{envInfo.desc}”</p>
            </div>
         </aside>
 
-        {/* --- 中栏：日志流 (倒序 + 浅色卡片) --- */}
-        <main className="flex-1 bg-[#f5f5f4] relative flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
-            {logs.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-stone-400 gap-2">
-                <div className="animate-spin text-2xl">⏳</div>
-                <div className="font-mono text-sm">LOADING HISTORY...</div>
-              </div>
-            )}
-
-            {/* 倒序渲染：最新的在最上面 */}
+        {/* 中栏：日志 */}
+        <main className="flex-1 bg-[#f3f4f6] flex flex-col min-w-0">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {[...logs].reverse().map((log, index) => {
               const realIndex = logs.length - index;
               const isNewest = index === 0;
-              
               return (
-                <article key={realIndex} className={`flex gap-4 group transition-all duration-500 ${isNewest ? 'translate-y-0 opacity-100' : 'opacity-80'}`}>
-                   {/* 序号 */}
-                   <div className="flex flex-col items-center pt-1 min-w-[3rem]">
-                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isNewest ? 'text-amber-700 bg-amber-100' : 'text-stone-400 bg-stone-200'}`}>
-                        #{String(realIndex).padStart(3, '0')}
-                      </span>
-                      <div className="w-px h-full bg-stone-300 my-2 group-last:hidden opacity-50"></div>
+                <div key={realIndex} className={`flex gap-3 ${isNewest ? 'opacity-100' : 'opacity-70'}`}>
+                   <div className="text-[10px] font-mono text-slate-400 pt-2 w-8 text-right">#{realIndex}</div>
+                   <div className={`flex-1 p-5 rounded-lg border ${isNewest ? 'bg-white border-blue-200 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
+                     <p className="text-sm leading-7 text-slate-700 text-justify">{log}</p>
                    </div>
-                   
-                   {/* 内容卡片 */}
-                   <div className={`flex-1 p-6 rounded-xl border ${
-                     isNewest 
-                       ? 'bg-white border-amber-200 shadow-[0_4px_20px_rgba(251,191,36,0.1)]' 
-                       : 'bg-white border-stone-200 shadow-sm'
-                   }`}>
-                     <p className="text-[15px] leading-8 text-stone-700 font-serif text-justify">
-                       {log}
-                     </p>
-                   </div>
-                </article>
+                </div>
               );
             })}
-            
             <div className="h-12"></div>
           </div>
         </main>
 
-        {/* --- 右栏：幸存者 (带头像) --- */}
-        <aside className="w-80 bg-white border-l border-stone-200 flex flex-col z-20 shadow-lg">
-          <div className="p-4 border-b border-stone-100 bg-white/95 sticky top-0 z-10 flex justify-between items-center">
-            <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest">Survivors</h2>
-            <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-bold border border-emerald-100">
-              {agents.length} ONLINE
-            </span>
+        {/* 右栏：人物卡片 (重构版) */}
+        <aside className="w-80 bg-white border-l border-slate-200 flex flex-col z-20">
+          <div className="p-3 border-b border-slate-100 bg-slate-50 text-xs font-bold text-slate-500 uppercase text-center tracking-widest">
+            Survivors ({agents.length})
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#fafaf9]">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#f8fafc]">
             {agents.map(agent => (
-              <div key={agent.id} className="bg-white border border-stone-200 rounded-xl p-3 hover:shadow-md hover:border-amber-200 transition-all duration-300 group">
+              <div key={agent.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-[0_2px_4px_rgba(0,0,0,0.02)] flex flex-col gap-3">
                 
-                <div className="flex items-start gap-3 mb-3">
-                  {/* 头像容器：增加前端强制 fallback 逻辑 */}
-                  <div className="relative w-12 h-12 rounded-lg bg-stone-100 overflow-hidden border border-stone-100 shadow-sm shrink-0">
+                {/* 顶部：头像 + 基础信息 */}
+                <div className="flex gap-3">
+                  {/* 头像 */}
+                  <div className="relative w-12 h-12 rounded-lg bg-slate-100 overflow-hidden border border-slate-100 shrink-0">
                     <Image 
-                      // 优先用数据库里的 URL，如果没有，就用前端临时生成的 URL
-                      src={agent.avatarUrl || getFallbackAvatar(agent.name, `${agent.name}-${agent.job}`)} 
+                      src={agent.avatarUrl || getFallbackAvatar(agent.name)} 
                       alt={agent.name}
                       fill
                       className="object-cover"
-                      unoptimized={true} // 必须开启，允许外部链接
-                      onError={(e) => {
-                        // 如果 DiceBear 加载失败，回退到名字
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
+                      unoptimized
                     />
-                    {/* 图片加载失败时的文字保底 */}
-                    <div className="absolute inset-0 flex items-center justify-center text-stone-300 font-bold text-lg -z-10">
-                      {agent.name[0]}
-                    </div>
                   </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-stone-800 text-sm truncate">{agent.name}</h3>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${agent.hp > 50 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                        HP {agent.hp}
-                      </span>
+                  
+                  {/* 信息 + 条状图 */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-bold text-sm text-slate-800">{agent.name}</span>
+                      <span className="text-[10px] text-slate-400">{agent.job}</span>
                     </div>
-                    <p className="text-[10px] text-stone-400 mt-0.5 truncate">{agent.job}</p>
                     
-                    {/* 饥饿度 */}
-                    <div className="w-full h-1 bg-stone-100 rounded-full mt-2 overflow-hidden">
-                       <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.max(0, 100 - agent.hunger)}%` }}></div>
+                    {/* HP 条 */}
+                    <div className="flex items-center gap-2">
+                       <div className="text-[9px] font-bold text-slate-400 w-4">HP</div>
+                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${agent.hp > 50 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{width: `${agent.hp}%`}}></div>
+                       </div>
+                    </div>
+                    
+                    {/* 饥饿条 */}
+                    <div className="flex items-center gap-2">
+                       <div className="text-[9px] font-bold text-slate-400 w-4">SAT</div>
+                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full" style={{width: `${Math.max(0, 100 - agent.hunger)}%`}}></div>
+                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* 底部信息 */}
-                <div className="bg-stone-50 rounded-lg p-2.5 space-y-1.5 border border-stone-100">
-                   <div className="flex items-center gap-1.5 text-[9px] text-stone-400 uppercase font-bold tracking-wider">
-                     <span>📍 {agent.locationName}</span>
-                   </div>
-                   <div className="text-[10px] text-stone-600 italic leading-tight">
+                {/* 底部：位置与动作 */}
+                <div className="text-xs space-y-2">
+                   {/* 气泡式日志 */}
+                   <div className="relative bg-slate-50 p-2 rounded-lg text-slate-600 border border-slate-100 italic text-[11px] leading-snug">
+                     <span className="absolute -top-1 left-4 w-2 h-2 bg-slate-50 border-t border-l border-slate-100 transform rotate-45"></span>
                      “{agent.actionLog}”
                    </div>
-                   
-                   {agent.inventory.length > 0 && (
-                     <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-stone-200/50">
-                       {agent.inventory.map((item, idx) => (
-                         <span key={idx} className="text-[9px] px-1.5 py-0.5 bg-white border border-stone-200 rounded text-stone-500 shadow-sm">
-                           {item}
-                         </span>
-                       ))}
-                     </div>
-                   )}
+
+                   {/* 底部栏：位置 + 背包 */}
+                   <div className="flex justify-between items-center pt-1">
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase">
+                        <span>📍 {agent.locationName}</span>
+                      </div>
+                      <div className="flex gap-1">
+                        {agent.inventory.map((item, i) => (
+                          <span key={i} className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[9px] text-slate-500">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                   </div>
                 </div>
 
               </div>
