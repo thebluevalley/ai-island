@@ -19,10 +19,13 @@ const SPAWN_RULES = {
   "2,1": ["石块", "燧石"], "0,2": ["废铁片", "塑料布"] 
 };
 
+// 头像 API 前缀
+const AVATAR_BASE = "https://api.dicebear.com/7.x/adventurer/svg";
+
 export async function POST() {
   await connectDB();
   
-  // --- 1. 6-Key 客户端初始化 ---
+  // --- 1. 初始化 6 个 API 客户端 (负载均衡) ---
   const sfEnv = new OpenAI({ apiKey: process.env.SF_API_KEY_1 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
   const sfNews = new OpenAI({ apiKey: process.env.SF_API_KEY_2 || "dummy", baseURL: "https://api.siliconflow.cn/v1" });
 
@@ -32,20 +35,29 @@ export async function POST() {
   const groq4 = new OpenAI({ apiKey: process.env.GROQ_API_KEY_4 || "dummy", baseURL: "https://api.groq.com/openai/v1" });
   
   let world = await World.findOne();
-  // 简化的防崩溃初始化 (若数据库为空)
+  
+  // --- 初始化世界 (含头像配置) ---
   if (!world || !world.agents || world.agents.length < 8) {
      if(world) await World.deleteMany({});
      world = await World.create({
         turn: 1, weather: "晴朗", mapResources: {}, mapBuildings: {"1,1":{name:"营地",progress:0,max:100}},
         agents: [
-            { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场" },
-            { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
-            { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
-            { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场" },
-            { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场" },
-            { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场" },
-            { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场" },
-            { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场" }
+            { id: 0, name: "张伟", job: "消防员", hp: 100, hunger: 0, inventory: ["多功能刀"], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=ZhangWei&backgroundColor=b6e3f4` },
+            { id: 1, name: "林晓云", job: "学者", hp: 90, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=LinXiaoyun&backgroundColor=d1f4e6` },
+            { id: 2, name: "王强", job: "商人", hp: 95, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=WangQiang&backgroundColor=ffdfba&glasses=sunglasses` },
+            { id: 3, name: "陈子墨", job: "学生", hp: 80, hunger: 0, inventory: ["画笔"], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=ChenZimo&backgroundColor=c0aede` },
+            { id: 4, name: "老赵", job: "厨师", hp: 90, hunger: 0, inventory: ["铁锅"], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=OldZhao&backgroundColor=f8fdcf` },
+            { id: 5, name: "Lisa", job: "护士", hp: 90, hunger: 0, inventory: ["急救包"], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=LisaNurse&backgroundColor=ffd1dc` },
+            { id: 6, name: "阿彪", job: "拳手", hp: 110, hunger: 0, inventory: [], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=AhBiao&backgroundColor=ffb3ba` },
+            { id: 7, name: "神婆", job: "占卜师", hp: 85, hunger: 0, inventory: ["塔罗牌"], x:1, y:1, locationName:"中央广场",
+              avatarUrl: `${AVATAR_BASE}?seed=Shenpo&backgroundColor=e0c3fc` }
         ],
         logs: ["【序幕】生存实验开始..."]
      });
@@ -72,8 +84,7 @@ export async function POST() {
   try {
     const res = await sfEnv.chat.completions.create({
       model: "Qwen/Qwen2.5-7B-Instruct",
-      // 修复：确保包含 "JSON"
-      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。请返回 JSON: {"weather":"", "description":""}` }],
+      messages: [{ role: "user", content: `第${dayCount}天${timeNow}，天气${world.weather}。上一轮:${world.envDescription}。生成环境(50字)和天气。JSON: {"weather":"", "description":""}` }],
       response_format: { type: "json_object" }
     });
     envData = JSON.parse(res.choices[0].message.content);
@@ -90,12 +101,14 @@ export async function POST() {
     你是${agent.name} (${agent.job})。状态: HP${agent.hp} 饥饿${agent.hunger}%。
     环境: ${envData.description}。
     感知: ${getInfo(agent)}
+    
     决策规则:
     1. 交互: 身边有人 TALK, GIVE, ATTACK, STEAL。
     2. 生存: 饿了EAT。有东西PICKUP。
     3. 建设: 中央广场BUILD。
     4. 移动: MOVE。
-    请返回 JSON: {"action": "动作类型", "target": "目标", "say": "台词"}
+    
+    返回JSON: {"action": "动作类型", "target": "目标", "say": "台词"}
   `;
 
   const callActors = (client, list) => Promise.all(list.map(a => 
@@ -129,12 +142,12 @@ export async function POST() {
                 action: rawActions[i].action, target: rawActions[i].target, say: rawActions[i].say
             })))}
             
-            判定规则：
+            判定逻辑：
             1. ATTACK: 比较战斗力，败者扣血。
             2. STEAL: 概率失败。
             3. 其他: 符合逻辑即成功。
             
-            请返回 JSON 对象:
+            返回 JSON (包含所有8人):
             {
               "updates": [
                 {"id": 0, "log": "...", "hp_change": 0},
@@ -146,22 +159,19 @@ export async function POST() {
         response_format: { type: "json_object" }
       });
       const json = JSON.parse(refereeRes.choices[0].message.content);
-      // 修复：更加稳健的 JSON 解析
       refereeUpdates = json.updates || json.results || [];
       
-      // 兜底：如果裁判漏了人，强制补全
+      // 兜底补全
       if (refereeUpdates.length < 8) {
-          const missingIds = world.agents.map(a=>a.id).filter(id => !refereeUpdates.find(u=>u.id===id));
-          missingIds.forEach(id => {
-              refereeUpdates.push({id, log: rawActions[id].say, hp_change: 0});
+          world.agents.forEach(a => {
+              if(!refereeUpdates.find(u=>u.id===a.id)) refereeUpdates.push({id:a.id, log:rawActions[a.id].say, hp_change:0});
           });
       }
   } catch(e) {
-      console.error("Referee Error:", e);
       refereeUpdates = world.agents.map((a,i) => ({id:a.id, log: rawActions[i].say, hp_change:0}));
   }
 
-  // --- STEP 4: 执行 ---
+  // --- STEP 4: 执行更新 ---
   refereeUpdates.forEach(u => {
       const agent = world.agents.find(a => a.id === u.id);
       const rawAct = rawActions[u.id];
@@ -198,18 +208,16 @@ export async function POST() {
       agent.hunger = Math.min(100, agent.hunger + 3);
   });
 
-  // --- STEP 5: 叙事 (Groq 2) & 新闻 (SF 2) ---
+  // --- STEP 5: 叙事 & 新闻 (Groq 2 & SF 2) ---
   const [judgeRes, socialRes] = await Promise.all([
       groq2.chat.completions.create({
         model: "llama-3.3-70b-versatile",
-        // 修复：强制包含 "JSON" 关键字，解决 400 错误
-        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于结果: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。请返回 JSON: {"story": "..."}` }],
+        messages: [{ role: "user", content: `写一段荒岛生存小说(300字)。基于: ${JSON.stringify(refereeUpdates)}。环境:${envData.description}。返回 JSON: {"story": "..."}` }],
         response_format: { type: "json_object" }
       }),
       sfNews.chat.completions.create({
         model: "Qwen/Qwen2.5-7B-Instruct",
-        // 修复：强制包含 "JSON" 关键字
-        messages: [{ role: "user", content: `生成社会新闻: ${JSON.stringify(refereeUpdates)}。请返回 JSON: {"news": "..."}` }],
+        messages: [{ role: "user", content: `生成社会新闻: ${JSON.stringify(refereeUpdates)}。返回 JSON: {"news": "..."}` }],
         response_format: { type: "json_object" }
       })
   ]);
@@ -217,7 +225,7 @@ export async function POST() {
   const storyData = JSON.parse(judgeRes.choices[0].message.content);
   const socialData = JSON.parse(socialRes.choices[0].message.content);
 
-  // --- 保存 ---
+  // 保存
   world.turn += 1;
   world.weather = envData.weather;
   world.envDescription = envData.description;
