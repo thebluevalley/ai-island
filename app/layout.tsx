@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "AI荒岛",
-    statusBarStyle: "default", // 关键：浅色背景下使用深色状态栏文字
+    statusBarStyle: "default", // 浅色背景必须配深色状态栏
   }
 };
 
@@ -18,7 +18,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#f9fafb", // 与页面背景色(gray-50)一致
+  themeColor: "#f9fafb",
 };
 
 export default function RootLayout({
@@ -28,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      {/* 强制文字颜色为深灰，背景为浅灰 */}
+      <body className="antialiased bg-gray-50 text-gray-900">
+        {children}
+      </body>
     </html>
   );
 }

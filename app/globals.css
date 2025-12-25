@@ -3,24 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 74, 222, 128; /* Hacker Green */
-  --background-start-rgb: 0, 0, 0;
-  --background-end-rgb: 0, 0, 0;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 249, 250, 251; /* gray-50 */
+  --background-end-rgb: 255, 255, 255;
 }
 
+/* 强制 Body 为浅色，防止任何系统深色模式干扰 */
 body {
   color: rgb(var(--foreground-rgb));
-  background: black;
-  /* 隐藏滚动条但允许滚动 */
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  background: rgb(var(--background-start-rgb));
+  /* 禁用 iOS 点击高亮 */
+  -webkit-tap-highlight-color: transparent;
 }
 
-body::-webkit-scrollbar {
+/* 隐藏滚动条但允许滚动 */
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-
-/* 适配 iPhone 底部安全区域 */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
