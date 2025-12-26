@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal, Map as MapIcon } from 'lucide-react';
+import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal, MapPin } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -90,7 +90,7 @@ export default function Home() {
   );
 
   return (
-    <div className="h-screen w-screen bg-[#f1f5f9] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
+    <div className="h-screen w-screen bg-[#f3f4f6] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
       
       {/* 左侧：地图 */}
       <div className="flex-[3] relative bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
@@ -125,7 +125,7 @@ export default function Home() {
                 <button onClick={() => setSidebarTab('team')} className={`px-3 py-0.5 text-[9px] font-bold rounded transition-all ${sidebarTab==='team'?'bg-white shadow-sm text-stone-800':'text-stone-400'}`}>TEAM</button>
             </div>
             <div className="text-[9px] font-mono text-stone-400">
-               NEXT: <span className="text-blue-500 font-bold">{nextRefresh}s</span>
+               <span className="text-blue-500 font-bold">{nextRefresh}s</span>
             </div>
         </div>
 
