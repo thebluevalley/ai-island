@@ -5,7 +5,6 @@ import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
 
-// Mock Data
 const DEFAULT_DATA = {
     agents: [
         { id: 1, name: "Builder", job: "Construct", x: 15, y: 15, actionLog: "Paving the main road..." },
@@ -16,7 +15,7 @@ const DEFAULT_DATA = {
     ],
     logs: [
         "System initialized.",
-        "High-Definition Rendering (240x120) active.",
+        "Grid Layout: 6x3 Spacious Blocks.",
         "Connecting civic centers...",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
@@ -73,7 +72,7 @@ export default function Home() {
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> HD_ASCII</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 238x120 (ULTRA_DETAIL)</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 6x3 SPACIOUS</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}

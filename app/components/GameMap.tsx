@@ -1,27 +1,27 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
-// --- 1. 字符集 (精致版) ---
+// --- 1. 字符集 (保持 HD 精致版) ---
 const CHARS: any = {
   EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
   
-  // 道路系统 (细线)
+  // 道路系统
   ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬', 
   ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼', 
-  PATH:        '·', // 极细小径
+  PATH:        '·', 
   
   // 建筑
   WALL: '#', DOOR: '+', FLOOR: ' ',
 };
 
-// --- 2. 配色 (High-Def Morandi) ---
+// --- 2. 配色 (Morandi) ---
 const COLORS: any = {
   BG:        '#23242a', 
-  BG_GRASS:  '#2b2d35', FG_GRASS: '#3e4451', // 更暗的噪点
+  BG_GRASS:  '#2b2d35', FG_GRASS: '#3e4451', 
   FG_FOREST: '#68856c', FG_WATER: '#6a9fb5', 
   
-  FG_ROAD_MAIN: '#abb2bf', // 亮灰
-  FG_ROAD_SUB:  '#5c6370', // 暗灰
+  FG_ROAD_MAIN: '#abb2bf', 
+  FG_ROAD_SUB:  '#5c6370', 
   FG_PATH:      '#8d6e63', 
 
   FG_RES_WALL: '#d4b595', FG_RES_DOOR: '#cc8c6c', 
@@ -30,14 +30,14 @@ const COLORS: any = {
   BG_BLDG:     '#1e1f24', 
 };
 
-// === 核心修改：超高分辨率网格 ===
-// 宽度增加到 240，高度 120
-const BLOCK_W = 34; // 街区变大
-const BLOCK_H = 30; 
-const GRID_COLS = 7; 
-const GRID_ROWS = 4; 
+// === 核心修改：6x3 舒朗大网格 ===
+// 总分辨率约为 240x120，保持 HD
+const BLOCK_W = 40; // 街区变得非常宽敞
+const BLOCK_H = 40; 
+const GRID_COLS = 6; // 6 列
+const GRID_ROWS = 3; // 3 行
 
-const MAP_COLS = BLOCK_W * GRID_COLS; // 238
+const MAP_COLS = BLOCK_W * GRID_COLS; // 240
 const MAP_ROWS = BLOCK_H * GRID_ROWS; // 120
 
 const random = (x: number, y: number) => {
@@ -48,7 +48,7 @@ const random = (x: number, y: number) => {
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [fontSize, setFontSize] = useState(8); // 默认更小字号
+  const [fontSize, setFontSize] = useState(8);
 
   const { agents } = worldData || { agents: [] };
 
@@ -70,7 +70,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
         for(let iy=y; iy<y+h; iy++) for(let ix=x; ix<x+w; ix++) setCell(ix, iy, char, fg, bg, isRoad);
     };
 
-    // 智能修路 (带边界检查)
     const drawPath = (x1: number, y1: number, x2: number, y2: number) => {
         let currX = x1, currY = y1;
         const safeSet = (x: number, y: number) => {
@@ -99,9 +98,10 @@ export default function GameMap({ worldData }: { worldData: any }) {
         return { doorX, doorY }; 
     };
 
-    // === Layout ===
-    const mainRoadW = 2;
-    // 1. Grid
+    // === Layout Generation ===
+    const mainRoadW = 2; // 主干道宽度
+
+    // 1. Grid Lines
     for(let i=0; i<=GRID_COLS; i++) {
         let x = i * BLOCK_W;
         if(i===GRID_COLS) x-=mainRoadW;
@@ -112,14 +112,13 @@ export default function GameMap({ worldData }: { worldData: any }) {
         if(i===GRID_ROWS) y-=mainRoadW;
         fillRect(0, y, MAP_COLS, mainRoadW, CHARS.ROAD_MAIN_H, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
-    // Crossings
     for(let x=0; x<=GRID_COLS; x++) for(let y=0; y<=GRID_ROWS; y++) {
         let px = x*BLOCK_W; if(x===GRID_COLS) px-=mainRoadW;
         let py = y*BLOCK_H; if(y===GRID_ROWS) py-=mainRoadW;
         fillRect(px, py, mainRoadW, mainRoadW, CHARS.ROAD_MAIN_C, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
 
-    // 2. Filling Blocks
+    // 2. Block Filling
     for (let by=0; by<GRID_ROWS; by++) {
         for (let bx=0; bx<GRID_COLS; bx++) {
             
@@ -130,52 +129,55 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const centerX = sx + sw/2;
             const centerY = sy + sh/2;
 
-            // Park (Fixed)
-            if (bx === 3 && by === 1) {
+            // Park (Moved to roughly center left: 2,1)
+            // 网格变少后，(2,1) 是比较好的中心位置 (0,1,2,3,4,5)
+            if (bx === 2 && by === 1) {
+                // Lush Forest
                 for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
-                    if (random(ix, iy) > 0.3) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    if (random(ix, iy) > 0.25) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 }
-                fillRect(sx+6, sy+6, sw-12, sh-12, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
+                // Large Lake
+                fillRect(sx+8, sy+8, sw-16, sh-16, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
                 continue;
             }
 
-            const isCivic = ((bx+by)%3 === 0) || (bx===3 && by===2);
+            // Civic Complex (Less frequent now)
+            const isCivic = ((bx+by)%3 === 0);
 
             if (isCivic) {
-                // Civic Complex (More detail)
+                // Civic: 2-4 Buildings with Gardens
                 for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
-                    if (random(ix, iy) > 0.7) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    if (random(ix, iy) > 0.65) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 }
 
-                // 2x2 quadrants for buildings
                 const qW = Math.floor(sw/2);
                 const qH = Math.floor(sh/2);
                 const quads = [
                     {x:sx, y:sy}, {x:sx+qW, y:sy}, {x:sx, y:sy+qH}, {x:sx+qW, y:sy+qH}
                 ];
 
-                const count = 2 + Math.floor(random(bx, by) * 2.9); // 2-4
+                const count = 2 + Math.floor(random(bx, by) * 2.9); 
                 for(let i=0; i<count; i++) {
                     const q = quads[i];
-                    // Building Size (Larger due to higher res)
-                    const bW = 12 + Math.floor(random(q.x, q.y)*8); // 12-20
-                    const bH = 10 + Math.floor(random(q.y, q.x)*6); // 10-16
+                    // Building Size
+                    const bW = 12 + Math.floor(random(q.x, q.y)*8); 
+                    const bH = 10 + Math.floor(random(q.y, q.x)*6); 
                     const bX = q.x + Math.floor((qW-bW)/2);
                     const bY = q.y + Math.floor((qH-bH)/2);
                     
                     const type = i===0 ? 'CIV' : 'COM';
                     const {doorX, doorY} = drawBuilding(bX, bY, bW, bH, type);
                     
-                    // Path to center
+                    // Path to block center
                     drawPath(doorX, doorY+1, doorX, doorY+3);
                     drawPath(doorX, doorY+3, Math.floor(centerX), Math.floor(centerY));
                 }
-                // Connect center to main road
+                // Path to main road
                 drawPath(Math.floor(centerX), Math.floor(centerY), Math.floor(centerX), sy+sh);
 
             } else {
-                // Residential (High Density 3x3 grid)
-                // Internal Roads
+                // Residential (High Density but Spacious Block)
+                // 十字路网划分
                 fillRect(sx, Math.floor(sy+sh/2), sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
                 fillRect(Math.floor(sx+sw/2), sy, 1, sh, CHARS.ROAD_SUB_V, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
                 setCell(Math.floor(sx+sw/2), Math.floor(sy+sh/2), CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
@@ -188,30 +190,27 @@ export default function GameMap({ worldData }: { worldData: any }) {
                 ];
 
                 zones.forEach(z => {
-                    // Try to fit 2-3 houses per quadrant in High Res
+                    // Try to fit 2 houses per quadrant (Total 8 per block)
                     const hW = 6, hH = 5;
                     
-                    // House 1
-                    if(random(z.x, z.y)>0.1) {
-                        const x1 = z.x + 2; const y1 = z.y + 2;
-                        const {doorX, doorY} = drawBuilding(x1, y1, hW, hH, 'RES');
-                        drawPath(doorX, doorY+1, doorX, Math.floor(sy+sh/2));
-                    }
-                    // House 2 (Offset)
-                    if(random(z.x+1, z.y)>0.2) {
-                        const x2 = z.x + subW - hW - 2; const y2 = z.y + 2;
-                        if(Math.abs(x2 - (z.x+2)) > hW + 2) { // No overlap
-                            const {doorX, doorY} = drawBuilding(x2, y2, hW, hH, 'RES');
+                    // House 1 (Top Left of quadrant)
+                    if(random(z.x, z.y) > 0.15) {
+                        const x1 = z.x + 3; 
+                        const y1 = z.y + 3;
+                        if (x1 + hW < z.x + subW && y1 + hH < z.y + subH) {
+                            const {doorX, doorY} = drawBuilding(x1, y1, hW, hH, 'RES');
                             drawPath(doorX, doorY+1, doorX, Math.floor(sy+sh/2));
                         }
                     }
-                    // House 3 (Bottom)
-                    if(random(z.x, z.y+1)>0.3) {
-                        const x3 = z.x + Math.floor(subW/2) - Math.floor(hW/2);
-                        const y3 = z.y + subH - hH - 2;
-                        // Simple check
-                        if(y3 > z.y + hH + 4) {
-                            const {doorX, doorY} = drawBuilding(x3, y3, hW, hH, 'RES');
+                    
+                    // House 2 (Bottom Right of quadrant)
+                    if(random(z.x+1, z.y+1) > 0.15) {
+                        const x2 = z.x + subW - hW - 3;
+                        const y2 = z.y + subH - hH - 2;
+                        
+                        // Check overlap with center roads and house 1
+                        if(x2 > z.x + hW + 2 && y2 > z.y + 2) {
+                            const {doorX, doorY} = drawBuilding(x2, y2, hW, hH, 'RES');
                             drawPath(doorX, doorY+1, Math.floor(sx+sw/2), doorY+1);
                         }
                     }
@@ -223,7 +222,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
     return grid;
   }, []);
 
-  // --- Rendering (Auto-Scale) ---
+  // --- Rendering ---
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -234,9 +233,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const { width, height } = entry.contentRect;
             const charW = width / MAP_COLS;
             const charH = height / MAP_ROWS;
-            // 允许字号非常小 (3px - 12px)
             const size = Math.floor(Math.min(charW / 0.6, charH));
-            const finalSize = Math.max(4, size); // 最小 4px，极度精致
+            const finalSize = Math.max(4, size); 
             setFontSize(finalSize);
         }
     });
@@ -247,7 +245,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         const dpr = window.devicePixelRatio || 1;
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         const metrics = ctx.measureText('M');
-        const charW = metrics.width; // 实际上 canvas 不严格依赖这个，我们由 scale 控制
+        const charW = metrics.width; 
         const charH = fontSize;
 
         const w = MAP_COLS * charW;
@@ -257,7 +255,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
         canvas.height = h * dpr;
         ctx.scale(dpr, dpr);
         
-        // CSS Force Fit
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         canvas.style.objectFit = 'fill'; 
