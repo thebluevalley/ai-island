@@ -1,44 +1,44 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, User, Coffee, ShoppingCart, Book } from 'lucide-react';
+import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, User } from 'lucide-react';
 
-// --- 1. 小镇配置 ---
+// --- 1. 配置 ---
 const TILE_SIZE = 32;
-const MAP_SIZE = 100; // 100x100 的大地图，足够容纳繁华小镇
+const MAP_COLS = 60; 
+const MAP_ROWS = 40; 
 
-// 地块类型定义 (ID)
+// 地块类型
 const TILES = {
-  EMPTY: 0,
-  GRASS: 1,
-  ROAD: 2,
-  FLOOR_WOOD: 3,   // 浅色木地板
-  FLOOR_DARK: 4,   // 深色木地板
-  FLOOR_TILE: 5,   // 瓷砖
-  FLOOR_RUG: 6,    // 地毯区
-  WALL: 10,        // 墙壁
-  DOOR: 11,        // 门
-  TREE: 20,        // 树
-  FLOWER: 21,      // 花
-  FURNITURE_BED: 30,
-  FURNITURE_TABLE_ROUND: 31,
-  FURNITURE_TABLE_RECT: 32,
-  FURNITURE_SHELF: 33,
-  FURNITURE_PLANT: 34,
+  GRASS: 0,
+  ROAD: 1,
+  WATER: 2,
 };
 
-// --- 2. 配色方案 (AI Town / Stardew Valley 风格) ---
+// 建筑类型
+const BUILDING_TYPES = {
+  HOME_S: 'small_home',   // 小民居
+  HOME_L: 'large_home',   // 大豪宅
+  SHOP:   'shop',         // 商店
+  SCHOOL: 'school',       // 学校/图书馆
+  CAFE:   'cafe',         // 咖啡馆
+};
+
+// --- 2. 视觉配色 (AI Town / Pokemon 风格) ---
 const COLORS = {
-  GRASS_BG: '#7dae58',      // 草地底色
-  GRASS_FG: '#96c968',      // 草地亮部
-  ROAD:     '#94a3b8',      // 街道灰
-  ROAD_EDGE:'#64748b',      // 街道边线
-  WALL_TOP: '#5f4b8b',      // 墙顶 (复古紫灰)
-  WALL_FACE:'#a8a29e',      // 墙面
-  WOOD_L:   '#e6ccb2',      // 浅木
-  WOOD_D:   '#b08968',      // 深木
-  TILE:     '#f1f5f9',      // 瓷砖
-  RUG:      '#fca5a5',      // 地毯红
-  DOOR:     '#7c2d12',      // 门框
+  GRASS_BG: '#76d7c4',      // 清新的薄荷绿 (草地)
+  GRASS_D:  '#48c9b0',      // 深色草装饰
+  ROAD:     '#e5e7e9',      // 灰白色路面
+  ROAD_SHADOW:'#bdc3c7',    // 路面阴影
+  WATER:    '#5dade2',      // 像素蓝
+  
+  // 建筑配色
+  ROOF_RES: '#e74c3c',      // 民居红顶
+  ROOF_COM: '#3498db',      // 商业蓝顶
+  ROOF_PUB: '#f1c40f',      // 公共黄顶
+  WALL:     '#fdfefe',      // 白墙
+  WALL_SHADOW:'#d7dbdd',    // 墙面阴影
+  DOOR:     '#5d4037',      // 深褐门
+  WINDOW:   '#85c1e9',      // 窗户蓝
 };
 
 export default function GameMap({ worldData }: { worldData: any }) {
@@ -48,122 +48,93 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
   const { agents } = worldData || { agents: [] };
 
-  // --- 1. 程序化城市生成器 ---
-  const townMap = useMemo(() => {
-    const map = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(TILES.GRASS);
-    const furniture: {x: number, y: number, type: number}[] = [];
+  // --- 1. 城市生成器 ---
+  const cityData = useMemo(() => {
+    // 地图网格
+    const grid = new Uint8Array(MAP_COLS * MAP_ROWS).fill(TILES.GRASS);
+    // 建筑列表 (独立于网格，方便渲染遮挡关系)
+    const buildings: any[] = [];
+    // 装饰物 (树)
+    const props: any[] = [];
 
-    // 辅助: 矩形填充
-    const fillRect = (x: number, y: number, w: number, h: number, type: number) => {
-      for(let iy=y; iy<y+h; iy++) {
-        for(let ix=x; ix<x+w; ix++) {
-          if (ix>=0 && ix<MAP_SIZE && iy>=0 && iy<MAP_SIZE) map[iy * MAP_SIZE + ix] = type;
-        }
-      }
-    };
-
-    // 辅助: 建造房屋 (包含内饰)
-    const buildHouse = (x: number, y: number, w: number, h: number, type: 'RESIDENTIAL' | 'COMMERCIAL') => {
-        // 留出院子空间
-        const margin = 2;
-        const bx = x + margin;
-        const by = y + margin;
-        const bw = w - margin*2;
-        const bh = h - margin*2;
-
-        if (bw < 6 || bh < 6) return; // 太小不建
-
-        // 地板材质选择
-        let floorTile = TILES.FLOOR_WOOD;
-        if (type === 'COMMERCIAL') floorTile = TILES.FLOOR_TILE;
-        else if (Math.random() > 0.5) floorTile = TILES.FLOOR_DARK;
-
-        // 1. 铺地板
-        fillRect(bx, by, bw, bh, floorTile);
-
-        // 2. 建墙
-        fillRect(bx, by, bw, 1, TILES.WALL); // Top
-        fillRect(bx, by+bh-1, bw, 1, TILES.WALL); // Bottom
-        fillRect(bx, by, 1, bh, TILES.WALL); // Left
-        fillRect(bx+bw-1, by, 1, bh, TILES.WALL); // Right
-
-        // 3. 开门 (下方中间)
-        const doorX = bx + Math.floor(bw/2);
-        map[(by+bh-1) * MAP_SIZE + doorX] = TILES.DOOR;
-        // 门前铺路连接到区域边缘
-        fillRect(doorX, by+bh, 1, margin, TILES.ROAD);
-
-        // 4. 室内布置 (简单算法)
-        if (type === 'RESIDENTIAL') {
-            // 床 (左上角)
-            furniture.push({x: bx+1, y: by+1, type: TILES.FURNITURE_BED});
-            // 桌子 (中心)
-            furniture.push({x: bx + Math.floor(bw/2), y: by + Math.floor(bh/2), type: TILES.FURNITURE_TABLE_ROUND});
-            // 盆栽 (右上角)
-            furniture.push({x: bx+bw-2, y: by+1, type: TILES.FURNITURE_PLANT});
-        } else {
-            // 商店货架/桌子
-            furniture.push({x: bx+1, y: by+1, type: TILES.FURNITURE_SHELF});
-            furniture.push({x: bx+bw-2, y: by+1, type: TILES.FURNITURE_SHELF});
-            furniture.push({x: bx + Math.floor(bw/2), y: by + Math.floor(bh/2), type: TILES.FURNITURE_TABLE_RECT});
+    // 辅助: 铺路
+    const drawRoad = (x: number, y: number, w: number, h: number) => {
+        for(let iy=y; iy<y+h; iy++) {
+            for(let ix=x; ix<x+w; ix++) {
+                if (ix>=0 && ix<MAP_COLS && iy>=0 && iy<MAP_ROWS) grid[iy * MAP_COLS + ix] = TILES.ROAD;
+            }
         }
     };
 
-    // --- 开始规划 ---
+    // 辅助: 放置建筑 (不修改 grid，只存入 buildings 列表)
+    const placeBuilding = (x: number, y: number, w: number, h: number, type: string, label: string) => {
+        // 建筑占地转换为路面或地基，避免草地穿帮
+        // 这里我们让建筑下面也是草地，靠渲染层覆盖
+        buildings.push({ x, y, w, h, type, label });
+        
+        // 门前铺一格路
+        const doorX = x + Math.floor(w/2);
+        const doorY = y + h;
+        if (doorY < MAP_ROWS) grid[doorY * MAP_COLS + doorX] = TILES.ROAD;
+    };
+
+    // --- 规划布局 ---
     
-    // 1. 生成路网 (Grid Layout)
-    const blockSize = 16; // 每个街区大小
     const roadWidth = 2;
-    
-    // 铺设主干道网格
-    for (let x = 0; x < MAP_SIZE; x += blockSize) {
-        fillRect(x, 0, roadWidth, MAP_SIZE, TILES.ROAD);
+    const blockW = 14;
+    const blockH = 10;
+
+    // 1. 生成井字形路网
+    for (let x = 4; x < MAP_COLS; x += blockW) {
+        drawRoad(x, 0, roadWidth, MAP_ROWS);
     }
-    for (let y = 0; y < MAP_SIZE; y += blockSize) {
-        fillRect(0, y, MAP_SIZE, roadWidth, TILES.ROAD);
+    for (let y = 4; y < MAP_ROWS; y += blockH) {
+        drawRoad(0, y, MAP_COLS, roadWidth);
     }
 
-    // 2. 填充街区 (Block Filling)
-    for (let gy = 0; gy < MAP_SIZE; gy += blockSize) {
-        for (let gx = 0; gx < MAP_SIZE; gx += blockSize) {
-            // 街区内部区域
-            const rx = gx + roadWidth;
-            const ry = gy + roadWidth;
-            const rw = blockSize - roadWidth;
-            const rh = blockSize - roadWidth;
-
-            // 决定这个街区做什么
-            const seed = Math.sin(gx * 99 + gy);
+    // 2. 填充街区
+    for (let gy = 4; gy < MAP_ROWS - blockH; gy += blockH) {
+        for (let gx = 4; gx < MAP_COLS - blockW; gx += blockW) {
+            // 街区内部坐标
+            const bx = gx + roadWidth + 1;
+            const by = gy + roadWidth + 1;
             
-            if (seed > 0.8) {
-                // 公园 (保留草地，加树和花)
-                for (let i=0; i<8; i++) {
-                    const tx = rx + Math.floor(Math.random() * rw);
-                    const ty = ry + Math.floor(Math.random() * rh);
-                    if (map[ty * MAP_SIZE + tx] === TILES.GRASS) {
-                        map[ty * MAP_SIZE + tx] = Math.random() > 0.5 ? TILES.TREE : TILES.FLOWER;
-                    }
-                }
+            // 随机决定用途
+            const seed = Math.sin(gx * gy);
+            
+            if (seed > 0.6) {
+                // 居民区：放两个小房子
+                placeBuilding(bx, by, 4, 3, BUILDING_TYPES.HOME_S, "Home");
+                placeBuilding(bx + 5, by + 2, 4, 3, BUILDING_TYPES.HOME_S, "Home");
             } else if (seed > 0.3) {
-                // 住宅区 (建房子)
-                buildHouse(rx, ry, rw, rh, 'RESIDENTIAL');
+                // 商业区：放一个大店
+                placeBuilding(bx + 1, by + 1, 6, 4, BUILDING_TYPES.SHOP, "Store");
+            } else if (seed > 0.0) {
+                // 豪宅
+                placeBuilding(bx + 2, by + 1, 5, 4, BUILDING_TYPES.HOME_L, "Villa");
             } else {
-                // 商业区
-                buildHouse(rx, ry, rw, rh, 'COMMERCIAL');
+                // 公园：种树
+                for (let i=0; i<5; i++) {
+                    props.push({ 
+                        x: bx + Math.random() * (blockW - 4), 
+                        y: by + Math.random() * (blockH - 4),
+                        type: 'tree'
+                    });
+                }
             }
         }
     }
 
-    // 3. 中央广场 (覆盖中间几个街区)
-    const cx = Math.floor(MAP_SIZE/2) - 8;
-    const cy = Math.floor(MAP_SIZE/2) - 8;
-    fillRect(cx, cy, 16, 16, TILES.FLOOR_TILE); // 广场铺砖
-    // 广场中心喷泉/雕塑位置留空或放特殊装饰
-    
-    return { grid: map, furniture };
+    // 3. 中央广场
+    const cx = Math.floor(MAP_COLS/2) - 6;
+    const cy = Math.floor(MAP_ROWS/2) - 6;
+    drawRoad(cx, cy, 14, 12); // 铺满路作为广场地面
+    placeBuilding(cx + 4, cy - 2, 6, 5, BUILDING_TYPES.SCHOOL, "Library"); // 广场北边的图书馆
+
+    return { grid, buildings, props };
   }, []);
 
-  // --- 2. Canvas 渲染 (高清像素风) ---
+  // --- 2. 渲染引擎 (2.5D RPG Style) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -171,8 +142,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const width = MAP_SIZE * TILE_SIZE;
-    const height = MAP_SIZE * TILE_SIZE;
+    const width = MAP_COLS * TILE_SIZE;
+    const height = MAP_ROWS * TILE_SIZE;
     
     canvas.width = width * dpr;
     canvas.height = height * dpr;
@@ -180,155 +151,167 @@ export default function GameMap({ worldData }: { worldData: any }) {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
 
-    // 绘制草地背景
-    ctx.fillStyle = COLORS.GRASS_BG;
-    ctx.fillRect(0, 0, width, height);
-
-    const { grid, furniture } = townMap;
-
-    // Pass 1: 地块渲染
-    for (let y = 0; y < MAP_SIZE; y++) {
-      for (let x = 0; x < MAP_SIZE; x++) {
-        const tile = grid[y * MAP_SIZE + x];
+    // 1. 绘制地面 (Layer 0)
+    const { grid, buildings, props } = cityData;
+    
+    for (let y = 0; y < MAP_ROWS; y++) {
+      for (let x = 0; x < MAP_COLS; x++) {
+        const type = grid[y * MAP_COLS + x];
         const px = x * TILE_SIZE;
         const py = y * TILE_SIZE;
 
-        if (tile === TILES.ROAD) {
+        if (type === TILES.GRASS) {
+            ctx.fillStyle = COLORS.GRASS_BG;
+            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            // 草地纹理
+            if ((x * y * 13) % 11 === 0) {
+                ctx.fillStyle = COLORS.GRASS_D;
+                ctx.fillRect(px + 8, py + 8, 4, 4);
+                ctx.fillRect(px + 14, py + 10, 3, 3);
+            }
+        } else if (type === TILES.ROAD) {
             ctx.fillStyle = COLORS.ROAD;
             ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            // 简单的路面噪点
-            if ((x+y)%3===0) {
-                ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                ctx.fillRect(px+4, py+4, 4, 4);
-            }
-        }
-        else if (tile === TILES.FLOOR_WOOD) {
-            ctx.fillStyle = COLORS.WOOD_L;
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            ctx.fillStyle = COLORS.WOOD_D; // 木纹横条
-            ctx.fillRect(px, py, TILE_SIZE, 1);
-            ctx.fillRect(px, py+8, TILE_SIZE, 1);
-            ctx.fillRect(px, py+16, TILE_SIZE, 1);
-            ctx.fillRect(px, py+24, TILE_SIZE, 1);
-        }
-        else if (tile === TILES.FLOOR_DARK) {
-            ctx.fillStyle = '#a1887f';
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            ctx.fillStyle = '#8d6e63'; 
-            ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
-        }
-        else if (tile === TILES.FLOOR_TILE) {
-            ctx.fillStyle = COLORS.TILE;
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            ctx.strokeStyle = '#cbd5e1';
-            ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
-        }
-        else if (tile === TILES.WALL) {
-            ctx.fillStyle = COLORS.WALL_FACE;
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            ctx.fillStyle = COLORS.WALL_TOP;
-            ctx.fillRect(px, py, TILE_SIZE, 8); // 墙顶厚度
-        }
-        else if (tile === TILES.DOOR) {
-            ctx.fillStyle = '#bcaaa4';
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            ctx.fillStyle = COLORS.DOOR;
-            ctx.fillRect(px+6, py+6, TILE_SIZE-12, TILE_SIZE-6);
-        }
-        else if (tile === TILES.FLOWER) {
-            // 画个小花
-            ctx.fillStyle = '#fca5a5';
-            ctx.beginPath(); ctx.arc(px+16, py+16, 6, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#fef3c7';
-            ctx.beginPath(); ctx.arc(px+16, py+16, 2, 0, Math.PI*2); ctx.fill();
+            // 路缘阴影
+            ctx.fillStyle = COLORS.ROAD_SHADOW;
+            ctx.fillRect(px, py + TILE_SIZE - 2, TILE_SIZE, 2);
         }
       }
     }
 
-    // Pass 2: 物体渲染 (树、家具)
-    // 树木
-    for (let y = 0; y < MAP_SIZE; y++) {
-        for (let x = 0; x < MAP_SIZE; x++) {
-            if (grid[y * MAP_SIZE + x] === TILES.TREE) {
-                const px = x * TILE_SIZE + TILE_SIZE/2;
-                const py = y * TILE_SIZE + TILE_SIZE/2;
-                ctx.fillStyle = '#4ade80'; // 亮绿树冠
-                ctx.beginPath(); ctx.arc(px, py-8, 12, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#16a34a'; // 深绿阴影
-                ctx.beginPath(); ctx.arc(px-4, py-6, 8, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#78350f'; // 树干
-                ctx.fillRect(px-2, py+2, 4, 6);
-            }
-        }
-    }
-    // 家具
-    furniture.forEach(f => {
-        const px = f.x * TILE_SIZE;
-        const py = f.y * TILE_SIZE;
-        const cx = px + TILE_SIZE/2;
-        const cy = py + TILE_SIZE/2;
-
-        if (f.type === TILES.FURNITURE_BED) {
-            ctx.fillStyle = '#bae6fd'; // 被子
-            ctx.fillRect(px+4, py+4, 24, 26);
-            ctx.fillStyle = '#ffffff'; // 枕头
-            ctx.fillRect(px+4, py+4, 24, 8);
-        } else if (f.type === TILES.FURNITURE_TABLE_ROUND) {
-            ctx.fillStyle = '#d7ccc8';
-            ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = '#a1887f'; ctx.lineWidth=2; ctx.stroke();
-        } else if (f.type === TILES.FURNITURE_SHELF) {
-            ctx.fillStyle = '#8d6e63';
-            ctx.fillRect(px+4, py+8, 24, 16);
-            // 书
-            ctx.fillStyle = '#ef4444'; ctx.fillRect(px+6, py+10, 4, 12);
-            ctx.fillStyle = '#3b82f6'; ctx.fillRect(px+12, py+10, 4, 12);
-            ctx.fillStyle = '#eab308'; ctx.fillRect(px+18, py+10, 4, 12);
-        } else if (f.type === TILES.FURNITURE_PLANT) {
-            ctx.fillStyle = '#22c55e';
-            ctx.beginPath(); ctx.arc(cx, cy-4, 8, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#d97706'; // 盆
-            ctx.fillRect(cx-4, cy+4, 8, 6);
-        }
+    // 2. 绘制装饰物 (Layer 1)
+    props.forEach(p => {
+        const px = p.x * TILE_SIZE;
+        const py = p.y * TILE_SIZE;
+        // 树阴影
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(px+16, py+28, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+        // 树干
+        ctx.fillStyle = '#795548';
+        ctx.fillRect(px+12, py+16, 8, 12);
+        // 树冠 (两个圆叠起来)
+        ctx.fillStyle = '#2ecc71';
+        ctx.beginPath(); ctx.arc(px+16, py+10, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#27ae60';
+        ctx.beginPath(); ctx.arc(px+16, py+4, 10, 0, Math.PI*2); ctx.fill();
     });
 
-  }, [townMap]);
+    // 3. 绘制建筑 (Layer 2) - 核心逻辑：画出房子形状
+    buildings.forEach(b => {
+        const px = b.x * TILE_SIZE;
+        const py = b.y * TILE_SIZE;
+        const pw = b.w * TILE_SIZE;
+        const ph = b.h * TILE_SIZE;
 
-  // --- 3. 初始视角居中 ---
+        // 阴影
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(px + 4, py + ph - 4, pw, 8);
+
+        // 墙体 (下半部分)
+        const wallH = ph * 0.5; // 墙高
+        const roofH = ph * 0.6; // 屋顶高 (稍微重叠)
+        const wallY = py + ph - wallH;
+
+        ctx.fillStyle = COLORS.WALL;
+        ctx.fillRect(px, wallY, pw, wallH);
+        // 墙体阴影/底边
+        ctx.fillStyle = COLORS.WALL_SHADOW;
+        ctx.fillRect(px, wallY + wallH - 4, pw, 4);
+
+        // 门 (居中)
+        const doorW = 12;
+        const doorH = 18;
+        const doorX = px + pw/2 - doorW/2;
+        const doorY = py + ph - doorH;
+        ctx.fillStyle = COLORS.DOOR;
+        ctx.fillRect(doorX, doorY, doorW, doorH);
+
+        // 窗户 (左右各一个)
+        if (pw > 40) {
+            ctx.fillStyle = COLORS.WINDOW;
+            ctx.fillRect(px + 8, wallY + 8, 10, 10);
+            ctx.fillRect(px + pw - 18, wallY + 8, 10, 10);
+        }
+
+        // 屋顶 (上半部分，梯形或三角形)
+        let roofColor = COLORS.ROOF_RES;
+        if (b.type === BUILDING_TYPES.SHOP) roofColor = COLORS.ROOF_COM;
+        if (b.type === BUILDING_TYPES.SCHOOL) roofColor = COLORS.ROOF_PUB;
+
+        ctx.fillStyle = roofColor;
+        ctx.beginPath();
+        // 模拟屋顶形状
+        const overhang = 4; // 屋檐伸出
+        ctx.moveTo(px - overhang, wallY);
+        ctx.lineTo(px + pw/2, py - 10); // 屋脊
+        ctx.lineTo(px + pw + overhang, wallY);
+        ctx.closePath();
+        ctx.fill();
+
+        // 屋顶侧面/厚度
+        ctx.fillStyle = 'rgba(0,0,0,0.1)'; // 加深一点颜色做侧面
+        ctx.beginPath();
+        ctx.moveTo(px - overhang, wallY);
+        ctx.lineTo(px + pw + overhang, wallY);
+        ctx.lineTo(px + pw + overhang, wallY + 6);
+        ctx.lineTo(px - overhang, wallY + 6);
+        ctx.fill();
+
+        // 建筑标签 (悬浮在屋顶)
+        // 这种绘制在 Canvas 里文字可能不清晰，我们改用 DOM 覆盖在上面，或者简单的canvas文字
+        /*
+        ctx.fillStyle = 'white';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.label, px + pw/2, py - 5);
+        */
+    });
+
+  }, [cityData]);
+
+  // --- 3. Viewport Focus ---
   useEffect(() => {
-    if (!containerRef.current) return;
-    const pW = containerRef.current.clientWidth;
-    const pH = containerRef.current.clientHeight;
-    // 默认看中心广场
-    const mapW = MAP_SIZE * TILE_SIZE;
-    const mapH = MAP_SIZE * TILE_SIZE;
-    
-    setViewState({
-        scale: 1, // 1:1 像素显示，最清晰
-        x: (pW - mapW) / 2,
-        y: (pH - mapH) / 2
-    });
+    const handleResize = () => {
+      if (!containerRef.current) return;
+      const pW = containerRef.current.clientWidth;
+      const pH = containerRef.current.clientHeight;
+      if (pW === 0) return;
+
+      const mapW = MAP_COLS * TILE_SIZE;
+      
+      // 默认看中心
+      const targetCols = 30; 
+      const scale = pW / (targetCols * TILE_SIZE);
+      
+      const x = (pW - mapW * scale) / 2;
+      const y = (pH - MAP_ROWS * TILE_SIZE * scale) / 2;
+      
+      setViewState({ scale, x, y });
+    };
+    window.addEventListener('resize', handleResize);
+    setTimeout(handleResize, 100);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-[#1e293b] relative overflow-hidden select-none cursor-move">
-      {/* 拖拽/缩放容器 (暂时简化为固定中心，可后续加拖拽) */}
+    <div ref={containerRef} className="w-full h-full bg-[#1e293b] relative overflow-hidden select-none">
+      
       <div 
-        className="absolute origin-center transition-transform duration-200"
+        className="absolute origin-center transition-transform duration-200 ease-out"
         style={{
-          width: MAP_SIZE * TILE_SIZE,
-          height: MAP_SIZE * TILE_SIZE,
+          width: MAP_COLS * TILE_SIZE,
+          height: MAP_ROWS * TILE_SIZE,
           transform: `translate3d(${viewState.x}px, ${viewState.y}px, 0) scale(${viewState.scale})`,
           imageRendering: 'pixelated'
         }}
       >
+        {/* 底层 Canvas (地面+建筑) */}
         <canvas ref={canvasRef} className="absolute inset-0 z-0 shadow-2xl" />
 
-        {/* 角色层 (Token) */}
+        {/* 顶层：角色 Entity (保持 DOM 以便交互) */}
         {agents.map((agent: any) => {
-            // 模拟坐标映射
-            const tx = (agent.x / 100) * MAP_SIZE;
-            const ty = (agent.y / 100) * MAP_SIZE;
+            const tx = (agent.x / 100) * MAP_COLS;
+            const ty = (agent.y / 100) * MAP_ROWS;
             
             return (
                 <div
@@ -341,30 +324,39 @@ export default function GameMap({ worldData }: { worldData: any }) {
                         height: TILE_SIZE 
                     }}
                 >
-                    <div className="relative w-full h-full flex flex-col items-center justify-center">
-                        {/* 名字 */}
-                        <div className="absolute top-[-14px] bg-white/90 px-1.5 py-0.5 rounded text-[8px] font-bold text-black border border-stone-300 shadow-sm whitespace-nowrap z-50">
+                    <div className="relative w-full h-full flex flex-col items-center justify-center -translate-y-1/2">
+                        {/* 名字标签 */}
+                        <div className="absolute top-[-10px] bg-black/60 text-white text-[8px] px-1.5 rounded-sm whitespace-nowrap backdrop-blur-sm border border-black/20">
                             {agent.name}
                         </div>
-                        
+
                         {/* 气泡 */}
                         {agent.actionLog && agent.actionLog.includes('“') && (
-                            <div className="absolute top-[-30px] bg-white border-2 border-black px-2 py-1 rounded-lg text-[9px] font-bold shadow-md whitespace-nowrap z-50">
+                            <div className="absolute bottom-full mb-1 bg-white border-2 border-black px-2 py-1 rounded-lg text-[9px] font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.2)] whitespace-nowrap z-50">
                                 💬
                             </div>
                         )}
 
-                        {/* 小人 Sprite */}
+                        {/* 角色 Sprite (像素小人) */}
                         <div className={`
-                            w-6 h-6 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white text-[10px] font-black
-                            ${agent.job.includes('建筑') ? 'bg-orange-500' : agent.job.includes('领袖') ? 'bg-blue-600' : 'bg-emerald-500'}
+                            w-6 h-8 rounded-sm border-2 border-black/30 shadow-sm flex flex-col items-center
+                            ${agent.job.includes('建筑') ? 'bg-[#f39c12]' : agent.job.includes('领袖') ? 'bg-[#3498db]' : 'bg-[#e74c3c]'}
                         `}>
-                            {agent.name[0]}
+                            {/* 脸部 */}
+                            <div className="w-full h-3 bg-[#f5cba7] border-b border-black/10"></div>
+                            {/* 身体 */}
+                            <div className="w-full h-4 flex justify-center">
+                               <div className="w-0.5 h-full bg-black/20"></div>
+                            </div>
                         </div>
+                        
+                        {/* 阴影 */}
+                        <div className="absolute bottom-[-2px] w-5 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
                     </div>
                 </div>
             );
         })}
+
       </div>
     </div>
   );
