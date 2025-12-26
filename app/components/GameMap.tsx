@@ -1,63 +1,62 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
-// --- 1. 核心工具：伪随机数生成器 (修复崩溃的关键) ---
-// 根据坐标返回一个 0.0 到 1.0 之间的固定数值
-// 只要 x, y 不变，返回的结果永远不变，确保前后端渲染一致
-const random = (x: number, y: number) => {
-    let sin = Math.sin(x * 12.9898 + y * 78.233);
-    return sin - Math.floor(sin);
-};
-
-// --- 2. 字符集 ---
+// --- 1. 字符集 ---
 const CHARS: any = {
   EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
-  ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬', // 主干道
-  ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼', // 次干道
+  
+  // 道路
+  ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬',
+  ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼',
+  
+  // 建筑
   WALL: '#', DOOR: '+', FLOOR: '.',
 };
 
-// --- 3. 莫兰迪配色 (保持您喜欢的风格) ---
+// --- 2. 莫兰迪/淡雅配色 ---
 const COLORS: any = {
   BG:        '#23242a', 
   BG_GRASS:  '#2b2d35', FG_GRASS: '#4a505c', 
   FG_FOREST: '#68856c', FG_WATER: '#6a9fb5', 
   
-  FG_ROAD_MAIN: '#8c92a3', // 亮灰主路
-  FG_ROAD_SUB:  '#4b5263', // 暗灰支路
+  // 道路
+  FG_ROAD_MAIN: '#8c92a3', // 亮灰
+  FG_ROAD_SUB:  '#4b5263', // 暗灰
 
-  // 建筑配色
+  // 建筑 (粉彩)
   FG_RES_WALL: '#d4b595', FG_RES_DOOR: '#cc8c6c', 
   FG_COM_WALL: '#8abeb7', FG_COM_DOOR: '#5e8d87',
   FG_CIV_WALL: '#b294bb', FG_CIV_DOOR: '#817299',
   BG_BLDG:     '#1e1f24', 
 };
 
-const COLS = 120;
-const ROWS = 70;
+// 完美对齐的尺寸 (4x4个 Superblock)
+const BLOCK_W = 32;
+const BLOCK_H = 20;
+const MAP_COLS = BLOCK_W * 4; // 128
+const MAP_ROWS = BLOCK_H * 4; // 80
 
-const CIVIC_BUILDINGS = [
-    { type: 'CIV', w: 16, h: 10, label: 'HALL' }, 
-    { type: 'CIV', w: 14, h: 8,  label: 'LIB'  }, 
-    { type: 'COM', w: 12, h: 8,  label: 'MKT'  }, 
-    { type: 'CIV', w: 12, h: 8,  label: 'HOSP' }, 
-];
+// 伪随机
+const random = (x: number, y: number) => {
+    let sin = Math.sin(x * 12.9898 + y * 78.233);
+    return sin - Math.floor(sin);
+};
 
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [fontSize, setFontSize] = useState(12);
+  const [viewState, setViewState] = useState({ scale: 0, x: 0, y: 0 });
 
   const { agents } = worldData || { agents: [] };
 
   const mapData = useMemo(() => {
-    const grid = new Array(COLS * ROWS).fill(null).map(() => ({ 
+    const grid = new Uint8Array(MAP_COLS * MAP_ROWS).fill(0).map(() => ({ 
         char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS 
     }));
     
     const setCell = (x: number, y: number, char: string, fg: string, bg?: string) => {
-        if(x>=0 && x<COLS && y>=0 && y<ROWS) {
-            const idx = y*COLS+x;
+        if(x>=0 && x<MAP_COLS && y>=0 && y<MAP_ROWS) {
+            const idx = y*MAP_COLS+x;
             grid[idx].char = char; grid[idx].fg = fg;
             if(bg) grid[idx].bg = bg;
         }
@@ -79,86 +78,129 @@ export default function GameMap({ worldData }: { worldData: any }) {
         setCell(x+Math.floor(w/2), y+h-1, CHARS.DOOR, doorColor, COLORS.BG_BLDG);
     };
 
-    // === 生成逻辑 (完全使用 random(x,y) 替代 Math.random) ===
+    // === 布局算法 ===
     
-    // 1. 主干路网
-    const mainBlockW = 36; 
-    const mainBlockH = 22; 
-    const mainRoadW = 2;   
+    // 1. 生成主干路网 (Supergrid)
+    const mainRoadW = 2;
 
-    for(let x=0; x<COLS; x+=mainBlockW) fillRect(x, 0, mainRoadW, ROWS, CHARS.ROAD_MAIN_V, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
-    for(let y=0; y<ROWS; y+=mainBlockH) fillRect(0, y, COLS, mainRoadW, CHARS.ROAD_MAIN_H, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
-    for(let x=0; x<COLS; x+=mainBlockW) for(let y=0; y<ROWS; y+=mainBlockH) fillRect(x, y, mainRoadW, mainRoadW, CHARS.ROAD_MAIN_C, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
+    // 绘制主路
+    for(let x=0; x<MAP_COLS; x+=BLOCK_W) fillRect(x, 0, mainRoadW, MAP_ROWS, CHARS.ROAD_MAIN_V, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
+    for(let y=0; y<MAP_ROWS; y+=BLOCK_H) fillRect(0, y, MAP_COLS, mainRoadW, CHARS.ROAD_MAIN_H, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
+    for(let x=0; x<MAP_COLS; x+=BLOCK_W) for(let y=0; y<MAP_ROWS; y+=BLOCK_H) fillRect(x, y, mainRoadW, mainRoadW, CHARS.ROAD_MAIN_C, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
 
-    let civicCount = 0;
+    // 2. 遍历 4x4 网格
+    const cols = MAP_COLS / BLOCK_W;
+    const rows = MAP_ROWS / BLOCK_H;
 
-    // 2. 街区填充
-    for (let by=0; by<Math.floor(ROWS/mainBlockH); by++) {
-        for (let bx=0; bx<Math.floor(COLS/mainBlockW); bx++) {
+    for (let by=0; by<rows; by++) {
+        for (let bx=0; bx<cols; bx++) {
             
-            const sx = bx * mainBlockW + mainRoadW;
-            const sy = by * mainBlockH + mainRoadW;
-            const sw = mainBlockW - mainRoadW;
-            const sh = mainBlockH - mainRoadW;
+            const sx = bx * BLOCK_W + mainRoadW;
+            const sy = by * BLOCK_H + mainRoadW;
+            const sw = BLOCK_W - mainRoadW;
+            const sh = BLOCK_H - mainRoadW;
 
-            // 中心公园 (左上角第二个街区)
+            // 区域中心坐标
+            const cx = sx + sw/2;
+            const cy = sy + sh/2;
+
+            // A. 中央公园 (定点：第二行第二列)
             if (bx === 1 && by === 1) {
-                // 树林 (确定性生成)
-                for(let iy=sy; iy<sy+sh; iy++) {
-                    for(let ix=sx; ix<sx+sw; ix++) {
-                        if (random(ix, iy) > 0.7) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                    }
+                // 森林
+                for(let i=0; i<200; i++) {
+                    const rx = sx + Math.floor(random(sx+i, sy)*sw);
+                    const ry = sy + Math.floor(random(sy, sx+i)*sh);
+                    setCell(rx, ry, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 }
-                fillRect(sx+4, sy+4, sw-8, sh-8, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
+                // 湖泊
+                fillRect(sx+6, sy+6, sw-12, sh-12, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
                 continue;
             }
 
-            // 公共建筑 (对角线位置)
-            if ((bx+by)%3 === 0 && civicCount < CIVIC_BUILDINGS.length) {
-                const bldg = CIVIC_BUILDINGS[civicCount++];
-                const cx = sx + Math.floor((sw-bldg.w)/2);
-                const cy = sy + Math.floor((sh-bldg.h)/2);
-                drawBuilding(cx, cy, bldg.w, bldg.h, bldg.type as any);
+            // B. 公共/商业街区 (对角线 + 中心周围)
+            // 规则：只要不是边缘的街区，都有可能是商业区
+            const isCivicZone = (bx+by)%2 === 0 && !(bx===1 && by===1);
+
+            if (isCivicZone) {
+                // === 生成 2-4 栋公共建筑 ===
+                // 将街区分为 4 个象限
+                const qW = Math.floor(sw/2);
+                const qH = Math.floor(sh/2);
                 
-                // 广场噪点
-                for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
-                    if(ix<cx||ix>cx+bldg.w||iy<cy||iy>cy+bldg.h) {
-                        if(random(ix, iy) > 0.8) setCell(ix, iy, CHARS.FLOOR, '#444', COLORS.BG_GRASS);
-                    }
+                // 铺广场地面
+                for(let i=0; i<50; i++) {
+                    const rx = sx + Math.floor(random(sx+i, sy)*sw);
+                    const ry = sy + Math.floor(random(sy, sx+i)*sh);
+                    setCell(rx, ry, CHARS.FLOOR, '#333', COLORS.BG_GRASS);
+                }
+
+                const quadrants = [
+                    {x: sx+1, y: sy+1},
+                    {x: sx+qW+1, y: sy+1},
+                    {x: sx+1, y: sy+qH+1},
+                    {x: sx+qW+1, y: sy+qH+1}
+                ];
+
+                // 决定建几栋 (2-4)
+                const count = 2 + Math.floor(random(bx, by) * 2.9); 
+                
+                for(let i=0; i<count; i++) {
+                    const q = quadrants[i];
+                    // 随机大小 (中等偏大)
+                    const bW = 8 + Math.floor(random(q.x, q.y)*6); // 8-13
+                    const bH = 6 + Math.floor(random(q.y, q.x)*3); // 6-8
+                    
+                    // 确保不越界
+                    const drawW = Math.min(bW, qW-2);
+                    const drawH = Math.min(bH, qH-2);
+
+                    const type = i===0 ? 'CIV' : 'COM'; // 第一栋必定是CIVIC
+                    drawBuilding(q.x + Math.floor((qW-drawW)/2), q.y + Math.floor((qH-drawH)/2), drawW, drawH, type);
                 }
                 continue;
             }
 
-            // === 居住区细分 ===
-            const subRows = 2; 
-            const subCols = 3;
-            const cellW = Math.floor(sw / subCols);
-            const cellH = Math.floor(sh / subRows);
+            // C. 居住区 (细分高密度)
+            // 内部路网：十字
+            fillRect(sx + sw/2, sy, 1, sh, CHARS.ROAD_SUB_V, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+            fillRect(sx, sy + sh/2, sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+            setCell(sx+sw/2, sy+sh/2, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
 
-            // 次干道
-            for(let i=1; i<subCols; i++) fillRect(sx+i*cellW, sy, 1, sh, CHARS.ROAD_SUB_V, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
-            for(let j=1; j<subRows; j++) fillRect(sx, sy+j*cellH, sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
-            for(let i=1; i<subCols; i++) for(let j=1; j<subRows; j++) setCell(sx+i*cellW, sy+j*cellH, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+            // 4个小地块，每个再尝试建 2 栋 (2x2x2 = 8 栋/block) 或 1 栋大房
+            // 简化逻辑：每个象限建 1-2 栋
+            const subW = Math.floor(sw/2);
+            const subH = Math.floor(sh/2);
+            
+            const resQuads = [
+                {x: sx, y: sy}, {x: sx+subW, y: sy},
+                {x: sx, y: sy+subH}, {x: sx+subW, y: sy+subH}
+            ];
 
-            // 房屋填充
-            for(let r=0; r<subRows; r++) {
-                for(let c=0; c<subCols; c++) {
-                    const hx = sx + c*cellW + 1;
-                    const hy = sy + r*cellH + 1;
-                    const hw = cellW - 2;
-                    const hh = cellH - 2;
+            resQuads.forEach((q, idx) => {
+                // 每个小地块内部
+                const innerX = q.x + (q.x > sx ? 1 : 0); // 让出道路
+                const innerY = q.y + (q.y > sy ? 1 : 0);
+                const innerW = subW - 1;
+                const innerH = subH - 1;
 
-                    const bW = 6, bH = 5;
-                    const bx_pos = hx + Math.floor((hw-bW)/2);
-                    const by_pos = hy + Math.floor((hh-bH)/2);
+                // 尝试建两栋小的
+                if (random(innerX, innerY) > 0.4) {
+                    const houseW = 5, houseH = 4;
+                    // 房1
+                    if(innerW > houseW+1 && innerH > houseH+1)
+                        drawBuilding(innerX+1, innerY+1, houseW, houseH, 'RES');
+                    // 房2 (错位)
+                    if(innerW > houseW*2 && innerH > houseH*2)
+                        drawBuilding(innerX+innerW-houseW-1, innerY+innerH-houseH-1, houseW, houseH, 'RES');
                     
-                    if (bx_pos+bW < sx+sw && by_pos+bH < sy+sh) {
-                        drawBuilding(bx_pos, by_pos, bW, bH, 'RES');
-                        // 院子里的树 (确定性)
-                        if(random(bx_pos, by_pos) > 0.5) setCell(bx_pos-1, by_pos+1, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                    }
+                    // 种树
+                    setCell(innerX+innerW-2, innerY+2, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                } else {
+                    // 建一栋大的
+                    const houseW = 8, houseH = 6;
+                    drawBuilding(innerX + Math.floor((innerW-houseW)/2), innerY + Math.floor((innerH-houseH)/2), houseW, houseH, 'RES');
                 }
-            }
+            });
         }
     }
 
@@ -174,10 +216,21 @@ export default function GameMap({ worldData }: { worldData: any }) {
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
             const { width, height } = entry.contentRect;
-            const charW = width / COLS;
-            const charH = height / ROWS;
+            const charW = width / MAP_COLS;
+            const charH = height / MAP_ROWS;
+            // 确保能填满容器
             const size = Math.floor(Math.min(charW / 0.6, charH));
-            setFontSize(Math.max(8, size));
+            // 允许字号更大一点以填满
+            const finalSize = Math.max(6, size); 
+            
+            // 调整 canvas 尺寸匹配容器，而不是匹配字号 (消除黑边)
+            // 我们通过 scale 来适配
+            const scaleX = width / (MAP_COLS * (finalSize * 0.6));
+            const scaleY = height / (MAP_ROWS * finalSize);
+            
+            // 这里我们使用一种 trick：让 canvas 像素尺寸等于字符网格尺寸 * 字号
+            // 然后通过 CSS 让它填满容器
+            setFontSize(finalSize);
         }
     });
     resizeObserver.observe(container);
@@ -188,31 +241,41 @@ export default function GameMap({ worldData }: { worldData: any }) {
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         const metrics = ctx.measureText('M');
         const charW = metrics.width;
-        const charH = fontSize;
+        const charH = fontSize; // 近似
 
-        canvas.width = COLS * charW * dpr;
-        canvas.height = ROWS * charH * dpr;
+        const w = MAP_COLS * charW;
+        const h = MAP_ROWS * charH;
+
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
         ctx.scale(dpr, dpr);
-        canvas.style.width = `${COLS * charW}px`;
-        canvas.style.height = `${ROWS * charH}px`;
+        
+        // 这里的 style 决定了它在屏幕上的显示大小
+        // 我们将其设为 100% 以填满 flex 容器
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        // 保持比例可能导致留白，如果设为 100% 可能会拉伸
+        // 更好的做法是 object-fit: contain 的效果，但在 canvas 里很难
+        // 我们这里让它保持比例，居中
+        canvas.style.objectFit = 'contain';
 
         ctx.fillStyle = COLORS.BG;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, w, h);
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         ctx.textBaseline = 'top';
 
-        mapData.forEach((cell, idx) => {
-            const x = (idx % COLS) * charW;
-            const y = Math.floor(idx / COLS) * charH;
+        mapData.forEach((cell: any, idx: number) => {
+            const x = (idx % MAP_COLS) * charW;
+            const y = Math.floor(idx / MAP_COLS) * charH;
             if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(x, y, charW+0.5, charH+0.5); }
             if (cell.char !== ' ') { ctx.fillStyle = cell.fg; ctx.fillText(cell.char, x, y); }
         });
 
-        // 绘制代理
+        // Agents
         agents.forEach((agent: any) => {
-            const tx = Math.floor((agent.x / 100) * COLS);
-            const ty = Math.floor((agent.y / 100) * ROWS);
-            if(tx>=0 && tx<COLS && ty>=0 && ty<ROWS) {
+            const tx = Math.floor((agent.x / 100) * MAP_COLS);
+            const ty = Math.floor((agent.y / 100) * MAP_ROWS);
+            if(tx>=0 && tx<MAP_COLS && ty>=0 && ty<MAP_ROWS) {
                 const x = tx * charW;
                 const y = ty * charH;
                 ctx.fillStyle = '#fff';
