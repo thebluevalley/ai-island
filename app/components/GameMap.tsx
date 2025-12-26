@@ -1,31 +1,32 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
-// --- 1. 字符集 (增加次级道路) ---
+// --- 1. 核心工具：伪随机数生成器 (修复崩溃的关键) ---
+// 根据坐标返回一个 0.0 到 1.0 之间的固定数值
+// 只要 x, y 不变，返回的结果永远不变，确保前后端渲染一致
+const random = (x: number, y: number) => {
+    let sin = Math.sin(x * 12.9898 + y * 78.233);
+    return sin - Math.floor(sin);
+};
+
+// --- 2. 字符集 ---
 const CHARS: any = {
   EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
-  
-  // 主干道 (双线/粗线)
-  ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬',
-  
-  // 次干道 (单线/细线)
-  ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼',
-  
-  // 建筑
+  ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬', // 主干道
+  ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼', // 次干道
   WALL: '#', DOOR: '+', FLOOR: '.',
 };
 
-// --- 2. 莫兰迪/淡雅配色 ---
+// --- 3. 莫兰迪配色 (保持您喜欢的风格) ---
 const COLORS: any = {
   BG:        '#23242a', 
   BG_GRASS:  '#2b2d35', FG_GRASS: '#4a505c', 
   FG_FOREST: '#68856c', FG_WATER: '#6a9fb5', 
   
-  // 道路区分
-  FG_ROAD_MAIN: '#8c92a3', // 亮灰
-  FG_ROAD_SUB:  '#4b5263', // 暗灰 (低对比)
+  FG_ROAD_MAIN: '#8c92a3', // 亮灰主路
+  FG_ROAD_SUB:  '#4b5263', // 暗灰支路
 
-  // 建筑 (粉彩)
+  // 建筑配色
   FG_RES_WALL: '#d4b595', FG_RES_DOOR: '#cc8c6c', 
   FG_COM_WALL: '#8abeb7', FG_COM_DOOR: '#5e8d87',
   FG_CIV_WALL: '#b294bb', FG_CIV_DOOR: '#817299',
@@ -33,14 +34,13 @@ const COLORS: any = {
 };
 
 const COLS = 120;
-const ROWS = 70; // 高度增加，容纳更多街区
+const ROWS = 70;
 
-// 公共建筑定义
 const CIVIC_BUILDINGS = [
-    { type: 'CIV', w: 16, h: 10, label: 'HALL' }, // Hall
-    { type: 'CIV', w: 14, h: 8,  label: 'LIB'  }, // Lib
-    { type: 'COM', w: 12, h: 8,  label: 'MKT'  }, // Market
-    { type: 'CIV', w: 12, h: 8,  label: 'HOSP' }, // Hosp
+    { type: 'CIV', w: 16, h: 10, label: 'HALL' }, 
+    { type: 'CIV', w: 14, h: 8,  label: 'LIB'  }, 
+    { type: 'COM', w: 12, h: 8,  label: 'MKT'  }, 
+    { type: 'CIV', w: 12, h: 8,  label: 'HOSP' }, 
 ];
 
 export default function GameMap({ worldData }: { worldData: any }) {
@@ -79,22 +79,20 @@ export default function GameMap({ worldData }: { worldData: any }) {
         setCell(x+Math.floor(w/2), y+h-1, CHARS.DOOR, doorColor, COLORS.BG_BLDG);
     };
 
-    // === 布局算法 ===
+    // === 生成逻辑 (完全使用 random(x,y) 替代 Math.random) ===
     
-    // 1. 生成主干路网 (Main Grid) -> 划分出 Superblocks
-    const mainBlockW = 36; // 大街区宽
-    const mainBlockH = 22; // 大街区高
-    const mainRoadW = 2;   // 主路宽
+    // 1. 主干路网
+    const mainBlockW = 36; 
+    const mainBlockH = 22; 
+    const mainRoadW = 2;   
 
-    // 绘制主路
     for(let x=0; x<COLS; x+=mainBlockW) fillRect(x, 0, mainRoadW, ROWS, CHARS.ROAD_MAIN_V, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
     for(let y=0; y<ROWS; y+=mainBlockH) fillRect(0, y, COLS, mainRoadW, CHARS.ROAD_MAIN_H, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
-    // 交叉口
     for(let x=0; x<COLS; x+=mainBlockW) for(let y=0; y<ROWS; y+=mainBlockH) fillRect(x, y, mainRoadW, mainRoadW, CHARS.ROAD_MAIN_C, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
 
     let civicCount = 0;
 
-    // 2. 遍历每个 Superblock
+    // 2. 街区填充
     for (let by=0; by<Math.floor(ROWS/mainBlockH); by++) {
         for (let bx=0; bx<Math.floor(COLS/mainBlockW); bx++) {
             
@@ -103,43 +101,46 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const sw = mainBlockW - mainRoadW;
             const sh = mainBlockH - mainRoadW;
 
-            // 中心公园 (固定在左上角的大街区)
+            // 中心公园 (左上角第二个街区)
             if (bx === 1 && by === 1) {
-                for(let i=0; i<150; i++) setCell(sx+Math.random()*sw, sy+Math.random()*sh, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                // 树林 (确定性生成)
+                for(let iy=sy; iy<sy+sh; iy++) {
+                    for(let ix=sx; ix<sx+sw; ix++) {
+                        if (random(ix, iy) > 0.7) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    }
+                }
                 fillRect(sx+4, sy+4, sw-8, sh-8, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
                 continue;
             }
 
-            // 公共建筑 (少量，放在显眼位置)
+            // 公共建筑 (对角线位置)
             if ((bx+by)%3 === 0 && civicCount < CIVIC_BUILDINGS.length) {
                 const bldg = CIVIC_BUILDINGS[civicCount++];
-                // 居中放置一个大建筑
                 const cx = sx + Math.floor((sw-bldg.w)/2);
                 const cy = sy + Math.floor((sh-bldg.h)/2);
                 drawBuilding(cx, cy, bldg.w, bldg.h, bldg.type as any);
                 
-                // 广场铺地
-                for(let i=0; i<30; i++) {
-                    const tx = sx + Math.random()*sw;
-                    const ty = sy + Math.random()*sh;
-                    if(tx<cx||tx>cx+bldg.w||ty<cy||ty>cy+bldg.h) setCell(Math.floor(tx), Math.floor(ty), CHARS.FLOOR, '#444', COLORS.BG_GRASS);
+                // 广场噪点
+                for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
+                    if(ix<cx||ix>cx+bldg.w||iy<cy||iy>cy+bldg.h) {
+                        if(random(ix, iy) > 0.8) setCell(ix, iy, CHARS.FLOOR, '#444', COLORS.BG_GRASS);
+                    }
                 }
                 continue;
             }
 
-            // === 居住区细分 (Subdivide Residential) ===
-            // 在 Superblock 内部划分为 3x2 或 3x3 的小格子
+            // === 居住区细分 ===
             const subRows = 2; 
             const subCols = 3;
             const cellW = Math.floor(sw / subCols);
             const cellH = Math.floor(sh / subRows);
 
-            // 绘制次干道 (内部路网)
+            // 次干道
             for(let i=1; i<subCols; i++) fillRect(sx+i*cellW, sy, 1, sh, CHARS.ROAD_SUB_V, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
             for(let j=1; j<subRows; j++) fillRect(sx, sy+j*cellH, sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
             for(let i=1; i<subCols; i++) for(let j=1; j<subRows; j++) setCell(sx+i*cellW, sy+j*cellH, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
 
-            // 填充每个小格子 (6-10 Houses per Block)
+            // 房屋填充
             for(let r=0; r<subRows; r++) {
                 for(let c=0; c<subCols; c++) {
                     const hx = sx + c*cellW + 1;
@@ -147,17 +148,14 @@ export default function GameMap({ worldData }: { worldData: any }) {
                     const hw = cellW - 2;
                     const hh = cellH - 2;
 
-                    // 100% 填充率，不再留空
-                    // 房子尺寸固定为 6x5
                     const bW = 6, bH = 5;
-                    // 在小格子里居中
-                    const bx = hx + Math.floor((hw-bW)/2);
-                    const by = hy + Math.floor((hh-bH)/2);
+                    const bx_pos = hx + Math.floor((hw-bW)/2);
+                    const by_pos = hy + Math.floor((hh-bH)/2);
                     
-                    if (bx+bW < sx+sw && by+bH < sy+sh) {
-                        drawBuilding(bx, by, bW, bH, 'RES');
-                        // 种树 (院子)
-                        if(Math.random()>0.5) setCell(bx-1, by+1, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    if (bx_pos+bW < sx+sw && by_pos+bH < sy+sh) {
+                        drawBuilding(bx_pos, by_pos, bW, bH, 'RES');
+                        // 院子里的树 (确定性)
+                        if(random(bx_pos, by_pos) > 0.5) setCell(bx_pos-1, by_pos+1, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                     }
                 }
             }
@@ -203,7 +201,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         ctx.textBaseline = 'top';
 
-        // Draw Map
         mapData.forEach((cell, idx) => {
             const x = (idx % COLS) * charW;
             const y = Math.floor(idx / COLS) * charH;
@@ -211,7 +208,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
             if (cell.char !== ' ') { ctx.fillStyle = cell.fg; ctx.fillText(cell.char, x, y); }
         });
 
-        // Draw Agents
+        // 绘制代理
         agents.forEach((agent: any) => {
             const tx = Math.floor((agent.x / 100) * COLS);
             const ty = Math.floor((agent.y / 100) * ROWS);

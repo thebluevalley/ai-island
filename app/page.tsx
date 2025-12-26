@@ -40,7 +40,7 @@ export default function Home() {
 
   if (!worldData) return (
     <div className="h-screen w-screen bg-[#23242a] text-[#8abeb7] font-mono flex flex-col items-center justify-center">
-      <div className="animate-pulse tracking-widest">CONNECTING TO MATRIX...</div>
+      <div className="animate-pulse tracking-widest">INITIALIZING TOWN...</div>
     </div>
   );
 
@@ -54,7 +54,7 @@ export default function Home() {
          
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
-                 <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> ASCII_CITY</span>
+                 <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> AI_TOWN_SIM</span>
                  <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 120x70</span>
              </div>
              <div className="text-[#5c6370]">TICK: {tick}</div>
@@ -80,6 +80,7 @@ export default function Home() {
         <div className="flex-1 overflow-y-auto p-3 text-xs font-mono leading-relaxed custom-scrollbar">
             {sidebarTab === 'LOG' && (
                 <div className="space-y-2">
+                    {/* Safe Access to logs */}
                     {(logs || []).slice().reverse().map((log: string, i: number) => (
                         <div key={i} className="break-words border-l border-[#4a505c] pl-2">
                             <span className="text-[#5c6370] mr-2">[{String((logs || []).length - i).padStart(3,'0')}]</span>
@@ -95,17 +96,17 @@ export default function Home() {
                     <div className="border border-[#2b2d35] p-2">
                         <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">LEGEND</div>
                         <div className="grid grid-cols-2 gap-y-2 text-[10px]">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>Home</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>House</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#8abeb7] text-[#8abeb7] flex items-center justify-center">#</div><span>Shop</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div><span>Civic</span></div>
-                            <div className="flex items-center gap-2"><span className="text-[#68856c]">♣</span><span>Forest</span></div>
+                            <div className="flex items-center gap-2"><span className="text-[#68856c]">♣</span><span>Park</span></div>
                         </div>
                     </div>
                     <div>
-                        <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">CITIZENS ({agents.length})</div>
+                        <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">CITIZENS</div>
                         <div className="space-y-1">
-                            {agents.map((agent: Agent) => (
-                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff]">
+                            {(agents || []).map((agent: Agent) => (
+                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff] cursor-default">
                                     <span>{agent.name}</span>
                                     <span className="text-[#5c6370] text-[9px]">{agent.job}</span>
                                 </div>
