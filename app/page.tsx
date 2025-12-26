@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Terminal, Users, Map, Activity } from 'lucide-react';
+import { Play, Pause, Terminal, Users, Map as MapIcon, Clock, Building2 } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
 
 const RESOURCES = [
-  { name: 'Funds', value: '$5.2M', color: 'text-stone-700' },
-  { name: 'Pop.', value: '24,000', color: 'text-stone-700' },
-  { name: 'Mood', value: 'Happy', color: 'text-emerald-600' },
+  { name: 'City Funds', value: '$2.8M', color: 'text-stone-700' },
+  { name: 'Population', value: '4,050', color: 'text-stone-700' },
+  { name: 'Stability', value: '99%', color: 'text-emerald-600' },
 ];
 
 export default function Home() {
@@ -45,28 +45,28 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#eceff1] text-stone-400 gap-4 font-sans">
-      <div className="w-10 h-10 border-4 border-stone-300 border-t-blue-500 rounded-full animate-spin"></div>
-      <div className="text-xs tracking-widest text-stone-500 uppercase font-bold">Loading Simulation...</div>
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#cfd8dc] text-stone-500 gap-4 font-sans">
+      <div className="w-10 h-10 border-4 border-white border-t-blue-500 rounded-full animate-spin"></div>
+      <div className="text-xs tracking-widest text-stone-600 uppercase font-bold">Constructing Town...</div>
     </div>
   );
 
   const { agents, logs } = worldData;
 
   return (
-    <div className="h-screen w-screen bg-[#e0e0e0] overflow-hidden flex font-sans text-stone-600">
+    <div className="h-screen w-screen bg-[#b0bec5] overflow-hidden flex font-sans text-stone-600">
       
       {/* 左侧：游戏全景 */}
-      <div className="flex-1 relative flex flex-col min-w-0 bg-white m-2 rounded-xl shadow-md border border-white overflow-hidden">
+      <div className="flex-1 relative flex flex-col min-w-0 bg-white m-2 rounded-xl shadow-lg border border-white overflow-hidden">
          
          {/* 顶部 HUD */}
-         <div className="absolute top-4 left-4 right-4 h-12 bg-white/95 backdrop-blur rounded-lg border border-stone-100 flex items-center justify-between px-4 shadow-sm z-10">
+         <div className="absolute top-4 left-4 right-4 h-12 bg-white/95 backdrop-blur-md rounded-lg border border-stone-100 flex items-center justify-between px-4 shadow-sm z-10">
              <div className="flex items-center gap-2">
-                 <div className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-xs flex gap-1 items-center">
-                    <Map size={12}/> SIM CITY
+                 <div className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-xs flex gap-1 items-center shadow-sm">
+                    <Building2 size={12}/> DREAM TOWN
                  </div>
                  <div className="flex items-center gap-1 text-xs text-stone-400 font-mono border-l border-stone-200 pl-2">
-                    <Activity size={12}/> LIVE
+                    <Clock size={12}/> YR {Math.floor(tick / 365) + 2024}
                  </div>
              </div>
 
@@ -92,11 +92,11 @@ export default function Home() {
       </div>
 
       {/* 右侧：信息面板 */}
-      <div className="w-[280px] bg-white border-l border-stone-200 flex flex-col z-20 my-2 mr-2 rounded-xl shadow-md overflow-hidden">
+      <div className="w-[280px] bg-white border-l border-stone-200 flex flex-col z-20 my-2 mr-2 rounded-xl shadow-lg overflow-hidden">
         
         <div className="flex border-b border-stone-100 p-1 bg-stone-50">
             <button onClick={() => setSidebarTab('logs')} className={`flex-1 py-2 text-[10px] font-bold uppercase rounded transition-all ${sidebarTab==='logs'?'bg-white shadow text-stone-800':'text-stone-400'}`}>Events</button>
-            <button onClick={() => setSidebarTab('team')} className={`flex-1 py-2 text-[10px] font-bold uppercase rounded transition-all ${sidebarTab==='team'?'bg-white shadow text-stone-800':'text-stone-400'}`}>People</button>
+            <button onClick={() => setSidebarTab('team')} className={`flex-1 py-2 text-[10px] font-bold uppercase rounded transition-all ${sidebarTab==='team'?'bg-white shadow text-stone-800':'text-stone-400'}`}>Citizens</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-0 font-mono text-xs bg-stone-50/30">
