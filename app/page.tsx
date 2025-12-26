@@ -5,6 +5,23 @@ import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
 
+// --- 1. 默认演示数据 (防止黑屏) ---
+const DEFAULT_DATA = {
+    agents: [
+        { id: 1, name: "Builder", job: "Construct", x: 15, y: 15, actionLog: "Paving the main road..." },
+        { id: 2, name: "Mayor", job: "Civic", x: 90, y: 40, actionLog: "Inspecting the new park..." },
+        { id: 3, name: "Gardener", job: "Nature", x: 50, y: 20, actionLog: "Planting trees..." },
+        { id: 4, name: "Trader", job: "Commerce", x: 130, y: 60, actionLog: "Opening the shop..." },
+        { id: 5, name: "Artist", job: "Creativity", x: 160, y: 30, actionLog: "Sketching the fountain..." }
+    ],
+    logs: [
+        "System initialized.",
+        "Map generation: 7x4 Supergrid active.",
+        "Internal roads connected.",
+        "Waiting for AI backend connection (Demo Mode Active)..."
+    ]
+};
+
 export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -17,18 +34,24 @@ export default function Home() {
     setLoading(true);
     try {
       const res = await fetch('/api/tick', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setWorldData(data.world);
-        setTick(t => t + 1);
+      if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setWorldData(data.world);
+            setTick(t => t + 1);
+          }
       }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { 
+        console.warn("API unavailable, using demo data"); 
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
   
   useEffect(() => {
-    const timer = setInterval(() => { fetchData(); }, 1000); 
+    const timer = setInterval(() => { fetchData(); }, 2000); 
     return () => clearInterval(timer);
   }, []);
 
@@ -38,32 +61,32 @@ export default function Home() {
     }
   }, [worldData, sidebarTab]);
 
-  if (!worldData) return (
-    <div className="h-screen w-screen bg-[#23242a] text-[#8abeb7] font-mono flex flex-col items-center justify-center">
-      <div className="animate-pulse tracking-widest">LOADING 7x4 ULTRA GRID...</div>
-    </div>
-  );
-
-  const { agents, logs } = worldData;
+  // --- 2. 关键修复：使用备用数据 ---
+  const activeData = worldData || DEFAULT_DATA;
+  const { agents, logs } = activeData;
+  const isDemo = !worldData;
 
   return (
     <div className="h-screen w-screen bg-[#1e1f24] text-[#c5c8c6] font-mono flex overflow-hidden p-1 gap-1">
       
-      {/* Main Map: Adjusted flex ratio for wider map */}
+      {/* Main Map Area */}
       <div className="flex-[5] border border-[#2b2d35] flex flex-col relative bg-[#23242a]">
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> ASCII_WIDE</span>
                  <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 182x80 (SUPER_BLOCKS)</span>
              </div>
-             <div className="text-[#5c6370]">TICK: {tick}</div>
+             <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
+                 {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
+             </div>
          </div>
          <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-             <GameMap worldData={worldData} />
+             {/* 始终渲染地图，绝不 Return Null */}
+             <GameMap worldData={activeData} />
          </div>
       </div>
 
-      {/* Sidebar: Slightly smaller */}
+      {/* Sidebar */}
       <div className="w-[260px] border border-[#2b2d35] flex flex-col bg-[#23242a]">
         <div className="flex border-b border-[#2b2d35] text-[10px]">
             <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-1.5 hover:bg-[#2b2d35] ${sidebarTab==='LOG'?'bg-[#2b2d35] text-[#fff]':'text-[#5c6370]'}`}>LOGS</button>
@@ -98,7 +121,7 @@ export default function Home() {
                         <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">CITIZENS ({agents.length})</div>
                         <div className="space-y-1">
                             {agents.map((agent: Agent) => (
-                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff]">
+                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff] cursor-default">
                                     <span>{agent.name}</span>
                                     <span className="text-[#5c6370] text-[9px]">{agent.job}</span>
                                 </div>
