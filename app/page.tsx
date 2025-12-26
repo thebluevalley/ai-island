@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Terminal, Cpu, Map, Info } from 'lucide-react';
+import { Terminal, Map, Users } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -9,7 +9,7 @@ export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
-  const [sidebarTab, setSidebarTab] = useState<'LOG' | 'LEGEND'>('LOG');
+  const [sidebarTab, setSidebarTab] = useState<'LOG' | 'INFO'>('LOG');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
@@ -39,55 +39,49 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center">
-      <div className="animate-pulse">LOADING_MATRIX_WORLD...</div>
+    <div className="h-screen w-screen bg-[#0f0f0f] text-[#333] font-mono flex flex-col items-center justify-center">
+      <div className="text-[#2e7d32] animate-pulse">GENERATING_ASCII_WORLD...</div>
     </div>
   );
 
   const { agents, logs } = worldData;
 
   return (
-    <div className="h-screen w-screen bg-[#000000] text-[#cccccc] font-mono flex overflow-hidden p-1 gap-1">
+    <div className="h-screen w-screen bg-[#000] text-[#ccc] font-mono flex overflow-hidden">
       
-      {/* 左侧：主地图 */}
-      <div className="flex-[4] border border-[#333] flex flex-col relative bg-[#111]">
+      {/* 主地图区域 */}
+      <div className="flex-1 flex flex-col relative border-r border-[#222]">
          
-         {/* 顶部状态栏 */}
-         <div className="h-6 border-b border-[#333] flex items-center justify-between px-2 text-[10px] bg-[#1a1a1a]">
+         <div className="h-8 border-b border-[#222] flex items-center justify-between px-3 text-xs bg-[#111]">
              <div className="flex gap-4">
-                 <span className="flex items-center gap-1 text-[#00e676]"><Terminal size={10}/> SYS: ONLINE</span>
-                 <span className="flex items-center gap-1"><Map size={10}/> ZONE: DOWNTOWN</span>
+                 <span className="text-[#2e7d32] font-bold flex items-center gap-1"><Terminal size={12}/> MATRIX_TOWN</span>
+                 <span className="text-[#555] flex items-center gap-1"><Map size={12}/> 120x60</span>
              </div>
-             <div className="flex gap-4">
-                 <span>TICK: {tick}</span>
-                 <span className="text-[#42a5f5]">POP: {agents.length}</span>
-             </div>
+             <div className="text-[#555]">TICK: {tick}</div>
          </div>
 
-         {/* 核心地图区 */}
-         <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+         <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-[#0f0f0f]">
              <GameMap worldData={worldData} />
          </div>
       </div>
 
-      {/* 右侧：数据面板 */}
-      <div className="flex-1 min-w-[280px] border border-[#333] flex flex-col bg-[#0f0f0f]">
+      {/* 右侧边栏 */}
+      <div className="w-[300px] flex flex-col bg-[#050505]">
         
-        {/* Tab */}
-        <div className="flex border-b border-[#333] text-[10px]">
-            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-1.5 hover:bg-[#222] ${sidebarTab==='LOG'?'bg-[#222] text-[#fff]':'text-[#666]'}`}>
-                [1] LOGS
+        <div className="flex border-b border-[#222] text-xs">
+            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-2 hover:bg-[#111] ${sidebarTab==='LOG'?'bg-[#1a1a1a] text-[#fff]':'text-[#555]'}`}>
+                LOGS
             </button>
-            <button onClick={() => setSidebarTab('LEGEND')} className={`flex-1 py-1.5 hover:bg-[#222] ${sidebarTab==='LEGEND'?'bg-[#222] text-[#fff]':'text-[#666]'}`}>
-                [2] LEGEND
+            <button onClick={() => setSidebarTab('INFO')} className={`flex-1 py-2 hover:bg-[#111] ${sidebarTab==='INFO'?'bg-[#1a1a1a] text-[#fff]':'text-[#555]'}`}>
+                INFO
             </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 text-[10px] leading-relaxed custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-3 text-xs font-mono leading-relaxed custom-scrollbar">
             {sidebarTab === 'LOG' && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className="break-words border-l-2 border-[#333] pl-2 hover:border-[#555]">
+                        <div key={i} className="break-words border-l border-[#333] pl-2">
                             <span className="text-[#444] mr-2">[{String(logs.length - i).padStart(3,'0')}]</span>
                             <span className="text-[#aaa]">{log}</span>
                         </div>
@@ -96,28 +90,41 @@ export default function Home() {
                 </div>
             )}
             
-            {sidebarTab === 'LEGEND' && (
-                <div className="space-y-3">
-                    <div className="border border-[#333] p-2">
-                        <div className="text-[#fff] mb-1 underline">BUILDINGS</div>
-                        <div className="grid grid-cols-2 gap-1 text-[#888]">
-                            <div><span className="text-[#ffab91]">⌂</span> Home</div>
-                            <div><span className="text-[#90a4ae]">▓</span> Apt</div>
-                            <div><span className="text-[#ef5350]">✚</span> Clinic</div>
-                            <div><span className="text-[#fff59d]">¥</span> Shop</div>
-                            <div><span className="text-[#dce775]">☕</span> Cafe</div>
-                            <div><span className="text-[#81d4fa]">¶</span> Lib</div>
-                            <div><span className="text-[#ce93d8]">🏛</span> Hall</div>
-                            <div><span className="text-[#bdbdbd]">🚉</span> Station</div>
+            {sidebarTab === 'INFO' && (
+                <div className="space-y-4">
+                    {/* Legend */}
+                    <div className="border border-[#222] p-2">
+                        <div className="text-[#555] mb-2 border-b border-[#222] pb-1">BUILDING CODES</div>
+                        <div className="grid grid-cols-2 gap-y-2 text-[10px]">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-[#000] border border-[#d84315] text-[#d84315] flex items-center justify-center">#</div>
+                                <span>Residential</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-[#000] border border-[#0277bd] text-[#0277bd] flex items-center justify-center">#</div>
+                                <span>Commercial</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-[#000] border border-[#9c27b0] text-[#9c27b0] flex items-center justify-center">#</div>
+                                <span>Civic/Gov</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[#2e7d32]">♣</span>
+                                <span>Forest</span>
+                            </div>
                         </div>
                     </div>
-                    <div className="border border-[#333] p-2">
-                        <div className="text-[#fff] mb-1 underline">INFRA</div>
-                        <div className="grid grid-cols-2 gap-1 text-[#888]">
-                            <div><span className="text-[#4db6ac]">🚏</span> Stop</div>
-                            <div><span className="text-[#ffeb3b]">🚌</span> Bus</div>
-                            <div><span className="text-[#43a047]">♣</span> Forest</div>
-                            <div><span className="text-[#00e676]">@</span> Person</div>
+
+                    {/* Agents */}
+                    <div>
+                        <div className="text-[#555] mb-2 border-b border-[#222] pb-1">POPULATION ({agents.length})</div>
+                        <div className="space-y-1">
+                            {agents.map((agent: Agent) => (
+                                <div key={agent.id} className="flex justify-between items-center text-[#888] hover:text-[#fff] cursor-default">
+                                    <span className={agent.job.includes('建筑')?'text-[#d84315]':'text-[#0277bd]'}>{agent.name}</span>
+                                    <span className="text-[#333] text-[9px]">{agent.job}</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

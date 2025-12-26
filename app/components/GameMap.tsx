@@ -1,106 +1,77 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
-// --- 1. ASCII 字符集 (增强版) ---
+// --- 1. 纯粹 ASCII 字符集 ---
+// 不再使用 Emoji，回归几何图形
 const CHARS: any = {
-  // 地形
   EMPTY: ' ',
-  GRASS: '·',        // 草地
-  FOREST: '♣',       // 森林
-  PAVEMENT: '░',     // 广场
-  WATER: '≈',        // 水
+  GRASS: '·',        // 地面纹理
+  TREE:  '♣',        // 树木 (密集时形成森林)
+  WATER: '≈',        // 水面
   
-  // 交通
+  // 道路 (线框风格)
   ROAD_H: '═',
   ROAD_V: '║',
-  ROAD_X: '╬',
-  BUS: '🚌',         // 公交车 (动态)
-  STOP: '🚏',        // 车站牌
+  ROAD_C: '╬',
   
-  // 建筑墙体
-  WALL: '#',
-  DOOR: '+',
-  WIN: 'o',
-  
-  // 建筑标识 (Roof/Sign)
-  HOME_S: '⌂',       // 小屋
-  HOME_L: '𝐇',       // 别墅
-  APT:    '▓',       // 公寓
-  
-  // 公共设施 (新)
-  CLINIC: '✚',       // 诊所
-  CAFE:   '☕',       // 咖啡
-  REST:   'Ψ',       // 餐馆
-  LIB:    '¶',       // 图书馆
-  HALL:   '🏛',      // 市政厅
-  STATION:'🚉',      // 交通枢纽
+  // 建筑构造
+  WALL: '#',         // 墙体 (通用)
+  DOOR: '+',         // 门
+  FLOOR: '.',        // 室内地面
 };
 
-// --- 2. 配色方案 (霓虹/终端风) ---
+// --- 2. 建筑学配色 (通过颜色区分功能) ---
 const COLORS: any = {
-  BG:        '#111111', 
+  BG:        '#0f0f0f', 
   
-  // 环境底色
-  BG_GRASS:  '#1b2e1b', 
-  BG_FOREST: '#0e230e', // 深林色
-  BG_ROAD:   '#222222', 
-  BG_PLAZA:  '#3e2723', 
-  BG_WATER:  '#0d47a1', 
-  BG_BLDG:   '#000000',
-
-  // 前景
-  FG_GRASS:  '#2e7d32', 
-  FG_FOREST: '#43a047', // 亮绿树
-  FG_ROAD:   '#555555', 
-  FG_WATER:  '#42a5f5', 
+  // 环境
+  BG_GRASS:  '#1a1a1a', 
+  FG_GRASS:  '#333333', 
+  FG_FOREST: '#2e7d32', // 深绿森林
+  FG_WATER:  '#1565c0', // 深蓝水域
   
-  // 建筑标识色
-  FG_WALL:   '#757575',
-  FG_DOOR:   '#8d6e63',
+  FG_ROAD:   '#424242', // 暗灰道路
   
-  FG_HOME:   '#ffab91', // 浅红
-  FG_APT:    '#90a4ae', // 蓝灰
-  FG_CLINIC: '#ef5350', // 红十字
-  FG_CAFE:   '#dce775', // 柠檬黄
-  FG_REST:   '#ffcc80', // 橙色
-  FG_LIB:    '#81d4fa', // 浅蓝
-  FG_HALL:   '#ce93d8', // 紫色
-  FG_STATION:'#bdbdbd', // 银色
+  // === 核心：通过颜色区分建筑类型 ===
   
-  // 交通
-  FG_BUS:    '#ffeb3b', // 黄色公交
-  FG_STOP:   '#4db6ac', // 青色站牌
+  // 1. 居住 (Residential) - 暖色、甚至略显拥挤
+  FG_RES_WALL: '#d84315', // 砖红墙
+  FG_RES_DOOR: '#ffab91',
   
-  // 角色
-  FG_AGENT:  '#00e676', 
-  BG_AGENT:  '#1b5e20', 
+  // 2. 商业 (Commercial) - 冷色、明亮
+  FG_COM_WALL: '#0277bd', // 亮蓝墙
+  FG_COM_DOOR: '#81d4fa',
+  
+  // 3. 公共/行政 (Civic) - 庄重、独特
+  FG_CIV_WALL: '#9c27b0', // 紫色/金色
+  FG_CIV_DOOR: '#e1bee7',
+  
+  // 室内通用
+  BG_BLDG:   '#050505', // 室内全黑，突出轮廓
 };
 
-const COLS = 100;
-const ROWS = 50;
+const COLS = 120; // 宽度增加，容纳更多建筑
+const ROWS = 60;
 
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fontSize, setFontSize] = useState(12);
-  
-  // 前端模拟交通流
-  const [buses, setBuses] = useState<{x:number, y:number, dx:number, dy:number}[]>([]);
 
   const { agents } = worldData || { agents: [] };
 
-  // --- 1. 生成静态地图数据 ---
+  // --- 1. 生成高密度地图 ---
   const mapData = useMemo(() => {
     const grid = new Array(COLS * ROWS).fill(null).map(() => ({ 
-        char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS, isRoad: false 
+        char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS 
     }));
     
-    const setCell = (x: number, y: number, char: string, fg: string, bg?: string, isRoad = false) => {
+    const setCell = (x: number, y: number, char: string, fg: string, bg?: string) => {
         if(x>=0 && x<COLS && y>=0 && y<ROWS) {
-            const cell = grid[y*COLS+x];
-            cell.char = char; cell.fg = fg;
-            if(bg) cell.bg = bg;
-            cell.isRoad = isRoad;
+            const idx = y*COLS+x;
+            grid[idx].char = char;
+            grid[idx].fg = fg;
+            if(bg) grid[idx].bg = bg;
         }
     };
 
@@ -108,160 +79,109 @@ export default function GameMap({ worldData }: { worldData: any }) {
         for(let iy=y; iy<y+h; iy++) for(let ix=x; ix<x+w; ix++) setCell(ix, iy, char, fg, bg);
     };
 
-    const drawBox = (x: number, y: number, w: number, h: number, fg: string, symbol: string) => {
-        // 墙
-        for(let ix=x; ix<x+w; ix++) { setCell(ix, y, CHARS.WALL, COLORS.FG_WALL, COLORS.BG_BLDG); setCell(ix, y+h-1, CHARS.WALL, COLORS.FG_WALL, COLORS.BG_BLDG); }
-        for(let iy=y; iy<y+h; iy++) { setCell(x, iy, CHARS.WALL, COLORS.FG_WALL, COLORS.BG_BLDG); setCell(x+w-1, iy, CHARS.WALL, COLORS.FG_WALL, COLORS.BG_BLDG); }
-        // 内部清空
-        fillRect(x+1, y+1, w-2, h-2, ' ', COLORS.FG_WALL, COLORS.BG_BLDG);
-        // 门 (底部中间)
-        setCell(x+Math.floor(w/2), y+h-1, CHARS.DOOR, COLORS.FG_DOOR, COLORS.BG_BLDG);
-        // 标识 (中心)
-        setCell(x+Math.floor(w/2), y+Math.floor(h/2), symbol, fg, COLORS.BG_BLDG);
+    // 建筑绘制器
+    const drawBuilding = (x: number, y: number, w: number, h: number, type: 'RES' | 'COM' | 'CIV') => {
+        let wallColor = COLORS.FG_RES_WALL;
+        let doorColor = COLORS.FG_RES_DOOR;
+        
+        if (type === 'COM') { wallColor = COLORS.FG_COM_WALL; doorColor = COLORS.FG_COM_DOOR; }
+        if (type === 'CIV') { wallColor = COLORS.FG_CIV_WALL; doorColor = COLORS.FG_CIV_DOOR; }
+
+        // 墙体轮廓
+        for(let ix=x; ix<x+w; ix++) { 
+            setCell(ix, y, CHARS.WALL, wallColor, COLORS.BG_BLDG); 
+            setCell(ix, y+h-1, CHARS.WALL, wallColor, COLORS.BG_BLDG); 
+        }
+        for(let iy=y; iy<y+h; iy++) { 
+            setCell(x, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG); 
+            setCell(x+w-1, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG); 
+        }
+        
+        // 内部清空 (地板)
+        fillRect(x+1, y+1, w-2, h-2, CHARS.FLOOR, '#222', COLORS.BG_BLDG);
+        
+        // 门 (根据建筑大小决定门的位置和数量)
+        const doorX = x + Math.floor(w/2);
+        setCell(doorX, y+h-1, CHARS.DOOR, doorColor, COLORS.BG_BLDG);
     };
 
-    // === 城市规划 ===
-    
-    // 1. 路网 (Grid)
-    const roadX = [15, 38, 62, 85]; 
-    const roadY = [10, 25, 40];
-    const roadW = 2;
+    // === 城市规划逻辑 ===
 
-    // 绘制路 (修复处)
-    roadY.forEach(y => {
-        for(let x=0; x<COLS; x++) {
-            setCell(x, y, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true);
-            setCell(x, y+1, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true); // 双车道
-        }
-    });
-    roadX.forEach(x => {
-        for(let y=0; y<ROWS; y++) {
-            setCell(x, y, CHARS.ROAD_V, COLORS.FG_ROAD, COLORS.BG_ROAD, true);
-            setCell(x+1, y, CHARS.ROAD_V, COLORS.FG_ROAD, COLORS.BG_ROAD, true);
-        }
-        roadY.forEach(y => fillRect(x, y, 2, 2, CHARS.ROAD_X, COLORS.FG_ROAD, COLORS.BG_ROAD));
-    });
+    // 1. 生成棋盘路网 (Dense Grid)
+    const blockW = 16; 
+    const blockH = 12;
+    const roadW = 1; // 单线道路，节省空间给建筑
 
-    // 2. 区域填充
-    const boundariesY = [0, ...roadY.map(y=>y+roadW), ROWS];
-    const boundariesX = [0, ...roadX.map(x=>x+roadW), COLS];
+    // 绘制横纵道路
+    for (let x = 0; x < COLS; x+=blockW) fillRect(x, 0, roadW, ROWS, CHARS.ROAD_V, COLORS.FG_ROAD, COLORS.BG_GRASS);
+    for (let y = 0; y < ROWS; y+=blockH) fillRect(0, y, COLS, roadW, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_GRASS);
+    // 交叉点
+    for (let x = 0; x < COLS; x+=blockW) for (let y = 0; y < ROWS; y+=blockH) setCell(x, y, CHARS.ROAD_C, COLORS.FG_ROAD, COLORS.BG_GRASS);
 
-    for (let i = 0; i < boundariesY.length - 1; i++) {
-        for (let j = 0; j < boundariesX.length - 1; j++) {
-            const x = boundariesX[j], y = boundariesY[i];
-            const w = boundariesX[j+1] - boundariesX[j] - (j<roadX.length?0:0); 
-            const h = boundariesY[i+1] - boundariesY[i] - (i<roadY.length?0:0);
+    // 2. 街区填充 (Zoning & Filling)
+    const cx = COLS / 2;
+    const cy = ROWS / 2;
+
+    for (let y = 0; y < ROWS; y += blockH) {
+        for (let x = 0; x < COLS; x += blockW) {
+            // 街区有效区域
+            const bx = x + roadW + 1;
+            const by = y + roadW + 1;
+            const bw = blockW - roadW - 2;
+            const bh = blockH - roadW - 2;
             
-            const bx = x+2, by = y+2, bw = w-4, bh = h-4;
-            if(bw<6 || bh<6) continue;
+            if (bx + bw >= COLS || by + bh >= ROWS) continue;
 
-            const cx = COLS/2, cy = ROWS/2;
-            const dist = Math.sqrt(((bx+bw/2)-cx)**2 + ((by+bh/2)-cy)**2);
+            const dist = Math.sqrt((x-cx)**2 + (y-cy)**2);
 
-            // A. 中心行政区 (Civic Core)
+            // A. 中心公园 (Central Park) - 成片森林
             if (dist < 15) {
-                fillRect(bx-1, by-1, bw+2, bh+2, CHARS.PAVEMENT, '#5d4037', COLORS.BG_PLAZA);
-                // 大建筑：市政厅
-                const hallW = 14, hallH = 8;
-                const hx = bx + Math.floor((bw-hallW)/2), hy = by + Math.floor((bh-hallH)/2);
-                drawBox(hx, hy, hallW, hallH, COLORS.FG_HALL, CHARS.HALL);
-                // 两个侧翼：图书馆 & 车站
-                if(bw > 20) {
-                    drawBox(bx, hy+1, 8, 6, COLORS.FG_LIB, CHARS.LIB); // Library
-                    drawBox(bx+bw-8, hy+1, 8, 6, COLORS.FG_STATION, CHARS.STATION); // Station
-                }
-                // 喷泉
-                setCell(hx+hallW/2, hy+hallH+2, '~', COLORS.FG_WATER, COLORS.BG_PLAZA);
-            }
-            // B. 商业环区 (Commercial)
-            else if (dist < 35) {
-                // 沿街商业
-                const shopW = 6, shopH = 5;
-                for(let sx=bx; sx<bx+bw-shopW; sx+=shopW+2) {
-                    // 上排
-                    const type = Math.random();
-                    let symbol = CHARS.SHOP, color = COLORS.FG_SHOP;
-                    if(type>0.7) { symbol=CHARS.CAFE; color=COLORS.FG_CAFE; } // 咖啡
-                    else if(type>0.4) { symbol=CHARS.REST; color=COLORS.FG_REST; } // 餐馆
-                    
-                    drawBox(sx, by, shopW, shopH, color, symbol);
-                    
-                    // 下排 (公寓或更多商店)
-                    if(bh > 12) {
-                        drawBox(sx, by+bh-shopH, shopW, shopH, COLORS.FG_APT, CHARS.APT);
+                // 填满树木
+                for(let py=by; py<by+bh; py++) {
+                    for(let px=bx; px<bx+bw; px++) {
+                        // 80% 密度
+                        if(Math.random() > 0.2) setCell(px, py, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                     }
                 }
-            }
-            // C. 森林公园 (Forest Park) - 随机几个区域
-            else if ((i+j)%5 === 3) {
-                // 密集种树
-                for(let py=by; py<by+bh; py++) for(let px=bx; px<bx+bw; px++) {
-                    if(Math.random()>0.3) setCell(px, py, CHARS.FOREST, COLORS.FG_FOREST, COLORS.BG_FOREST);
+                // 中心湖
+                if(x === Math.floor(COLS/2 - blockW/2) || x === Math.floor(COLS/2 + blockW/2)) {
+                     fillRect(bx+2, by+2, bw-4, bh-4, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
                 }
-                // 林中小屋
-                drawBox(bx+Math.floor(bw/2)-3, by+Math.floor(bh/2)-2, 6, 5, COLORS.FG_HOME, CHARS.HOME_S);
+                continue;
             }
-            // D. 居住区 (Residential)
-            else {
-                // 社区诊所 (每个大居住区配一个)
-                if(Math.random() > 0.7) {
-                    drawBox(bx, by, 8, 6, COLORS.FG_CLINIC, CHARS.CLINIC);
-                }
-                // 别墅群
-                const houseW = 6, houseH = 5;
-                for(let hx=bx+2; hx<bx+bw-houseW; hx+=houseW+2) {
-                    for(let hy=by+2; hy<by+bh-houseH; hy+=houseH+2) {
-                        if(grid[hy*COLS+hx].char === CHARS.GRASS) { // 没被占
-                            drawBox(hx, hy, houseW, houseH, COLORS.FG_HOME, CHARS.HOME_S);
-                        }
-                    }
-                }
+
+            // B. 核心区 (Civic Center) - 巨大建筑
+            if (dist < 28) {
+                // 一个街区只放一个大建筑
+                const type = (x+y)%3 === 0 ? 'CIV' : 'COM';
+                drawBuilding(bx, by, bw, bh, type);
+                continue;
             }
+
+            // C. 住宅区 (Residential) - 极高密度
+            // 在一个街区内尝试塞入 4 个小房子
+            const houseW = 5;
+            const houseH = 4;
+            
+            // 紧凑排列: 2x2 网格
+            // Top-Left
+            drawBuilding(bx, by, houseW, houseH, 'RES');
+            // Top-Right
+            drawBuilding(bx + bw - houseW, by, houseW, houseH, 'RES');
+            // Bottom-Left
+            drawBuilding(bx, by + bh - houseH, houseW, houseH, 'RES');
+            // Bottom-Right
+            drawBuilding(bx + bw - houseW, by + bh - houseH, houseW, houseH, 'RES');
+
+            // 缝隙种树
+            setCell(bx + houseW + 1, by + houseH + 1, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
         }
     }
-
-    // 3. 交通设施 (Bus Stops)
-    // 在主干道交叉口附近放置
-    roadX.forEach(x => {
-        roadY.forEach(y => {
-            setCell(x+roadW, y-2, CHARS.STOP, COLORS.FG_STOP, COLORS.BG_ROAD);
-            setCell(x-1, y+roadW+2, CHARS.STOP, COLORS.FG_STOP, COLORS.BG_ROAD);
-        });
-    });
 
     return grid;
   }, []);
 
-  // --- 2. 交通模拟 (Simple Simulation) ---
-  useEffect(() => {
-    // 初始化几辆公交车
-    const initBuses = [
-        {x: 20, y: 0, dx: 0, dy: 1}, // 竖向
-        {x: 50, y: 49, dx: 0, dy: -1},
-        {x: 0, y: 25, dx: 1, dy: 0}, // 横向
-        {x: 99, y: 12, dx: -1, dy: 0},
-    ];
-    setBuses(initBuses);
-
-    const timer = setInterval(() => {
-        setBuses(prev => prev.map(bus => {
-            let nx = bus.x + bus.dx;
-            let ny = bus.y + bus.dy;
-            
-            // 边界循环
-            if(nx >= COLS) nx = 0; if(nx < 0) nx = COLS-1;
-            if(ny >= ROWS) ny = 0; if(ny < 0) ny = ROWS-1;
-
-            // 简单转向逻辑：遇到十字路口随机转向
-            // 这里简化为一直直走，模拟固定线路
-            return { ...bus, x: nx, y: ny };
-        }));
-    }, 200); // 移动速度
-
-    return () => clearInterval(timer);
-  }, []);
-
-  // --- 3. 渲染循环 ---
+  // --- 2. 渲染引擎 ---
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -273,8 +193,9 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const { width, height } = entry.contentRect;
             const charW = width / COLS;
             const charH = height / ROWS;
+            // 计算最大合适的字号
             const size = Math.floor(Math.min(charW / 0.6, charH));
-            setFontSize(Math.max(10, size));
+            setFontSize(Math.max(8, size));
         }
     });
     resizeObserver.observe(container);
@@ -301,53 +222,54 @@ export default function GameMap({ worldData }: { worldData: any }) {
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         ctx.textBaseline = 'top';
 
-        // 1. 静态地图
+        // 绘制地图
         mapData.forEach((cell, idx) => {
             const x = (idx % COLS) * charW;
             const y = Math.floor(idx / COLS) * charH;
             
-            ctx.fillStyle = cell.bg;
-            ctx.fillRect(x, y, charW+0.5, charH+0.5);
+            // 背景
+            if (cell.bg) {
+                ctx.fillStyle = cell.bg;
+                ctx.fillRect(x, y, charW+0.5, charH+0.5);
+            }
 
+            // 字符
             if (cell.char !== ' ') {
                 ctx.fillStyle = cell.fg;
                 ctx.fillText(cell.char, x, y);
             }
         });
 
-        // 2. 动态公交车
-        buses.forEach(bus => {
-            const x = bus.x * charW;
-            const y = bus.y * charH;
-            ctx.fillStyle = COLORS.FG_BUS;
-            ctx.fillText(CHARS.BUS, x, y);
-        });
-
-        // 3. 角色
+        // 绘制角色 (高亮显示)
         agents.forEach((agent: any) => {
             const tx = Math.floor((agent.x / 100) * COLS);
             const ty = Math.floor((agent.y / 100) * ROWS);
             if(tx>=0 && tx<COLS && ty>=0 && ty<ROWS) {
                 const x = tx * charW;
                 const y = ty * charH;
-                ctx.fillStyle = COLORS.BG_AGENT;
+                
+                // 角色光标背景
+                ctx.fillStyle = COLORS.BG_AGENT; 
                 ctx.fillRect(x, y, charW, charH);
+                
+                // 角色字符
                 ctx.fillStyle = COLORS.FG_AGENT;
                 ctx.fillText('@', x, y);
-                // 名字
+                
+                // 名字标签
                 ctx.fillStyle = '#fff';
-                ctx.font = `${fontSize*0.7}px monospace`;
-                ctx.fillText(agent.name, x, y-charH*0.8);
+                ctx.font = `${Math.max(8, fontSize*0.6)}px monospace`;
+                ctx.fillText(agent.name, x, y - charH * 0.8);
                 ctx.font = `bold ${fontSize}px "Fira Code", monospace`; // 恢复
             }
         });
     }
 
     return () => resizeObserver.disconnect();
-  }, [fontSize, mapData, agents, buses]);
+  }, [fontSize, mapData, agents]);
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-[#111] flex items-center justify-center overflow-hidden">
+    <div ref={containerRef} className="w-full h-full bg-[#0f0f0f] flex items-center justify-center overflow-hidden">
       <canvas ref={canvasRef} />
     </div>
   );
