@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal } from 'lucide-react';
+import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal, MapPin } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -13,18 +13,6 @@ const BUILD_OPTIONS = [
   { type: "Kitchen", name: "Kitchen", cost: "60 W" },
   { type: "Tower", name: "Tower", cost: "120 W" }
 ];
-
-const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
-    let color = "bg-stone-400";
-    if (job.includes("建筑")) color = "bg-amber-500";
-    else if (job.includes("医")) color = "bg-rose-500";
-    else if (job.includes("领袖")) color = "bg-blue-500";
-    else color = "bg-emerald-500";
-    
-    return (
-      <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center text-white text-[8px] font-bold shadow-sm shrink-0 border border-white`}></div>
-    );
-};
 
 export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
@@ -48,12 +36,12 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("Confirm Reset?")) return;
+    if (!confirm("Reset Simulation?")) return;
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
   };
 
-  const handleBuild = (type: string) => alert(`Building: ${type}`);
+  const handleBuild = (type: string) => alert(`Construction: ${type}`);
 
   useEffect(() => { fetchData(); }, []);
   
@@ -74,83 +62,82 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-100 text-stone-400 gap-4">
-      <Activity className="animate-spin text-blue-400" size={24} />
-      <div className="text-[10px] font-mono tracking-widest uppercase">Connecting...</div>
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#f0f4f8] text-stone-400 gap-4 font-mono">
+      <div className="w-12 h-12 border-4 border-stone-200 border-t-blue-400 rounded-full animate-spin"></div>
+      <div className="text-xs tracking-widest">LOADING AI TOWN...</div>
     </div>
   );
 
   const { agents, globalResources, logs } = worldData;
 
-  const ResourceItem = ({ label, value, color }: any) => (
-    <div className="flex flex-col items-center min-w-[2.5rem]">
-       <span className="text-[8px] font-bold text-stone-400 uppercase">{label}</span>
+  const ResourcePill = ({ label, value, color }: any) => (
+    <div className="flex items-center gap-2 bg-stone-50 px-3 py-1.5 rounded-lg border border-stone-100">
+       <span className="text-[10px] font-bold text-stone-400 uppercase">{label}</span>
        <span className={`text-xs font-bold font-mono ${color}`}>{value}</span>
     </div>
   );
 
   return (
-    <div className="h-screen w-screen bg-[#e5e7eb] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
+    <div className="h-screen w-screen bg-[#e8eef2] overflow-hidden flex font-sans text-stone-600 p-4 gap-4">
       
-      {/* 左侧：全屏沉浸地图 (占比调大) */}
-      <div className="flex-[4] relative bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
+      {/* --- 左侧：游戏世界 (RPG Style) --- */}
+      <div className="flex-[3] relative bg-white rounded-2xl overflow-hidden shadow-xl border-4 border-white">
          
-         {/* 顶部资源条 */}
-         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-white/90 backdrop-blur px-5 py-1.5 rounded-full shadow-lg border border-stone-100 flex gap-4 items-center">
-            <ResourceItem label="Wood" value={globalResources.wood} color="text-amber-600" />
-            <div className="w-px h-4 bg-stone-200"></div>
-            <ResourceItem label="Food" value={globalResources.food} color="text-emerald-600" />
-            <div className="w-px h-4 bg-stone-200"></div>
-            <ResourceItem label="Meds" value={globalResources.medicine} color="text-rose-500" />
+         {/* 顶部状态栏 */}
+         <div className="absolute top-4 left-4 right-4 z-40 flex justify-between items-start pointer-events-none">
+             <div className="flex gap-2 pointer-events-auto">
+                <ResourcePill label="Wood" value={globalResources.wood} color="text-amber-600" />
+                <ResourcePill label="Food" value={globalResources.food} color="text-emerald-600" />
+                <ResourcePill label="Meds" value={globalResources.medicine} color="text-rose-500" />
+             </div>
+             
+             <div className="flex gap-2 pointer-events-auto">
+                 {BUILDINGS.map((opt:any) => (
+                    <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-9 h-9 bg-white rounded-lg shadow-md border border-stone-200 flex items-center justify-center text-stone-400 hover:text-blue-500 hover:scale-110 transition-all">
+                        <Construction size={16} />
+                    </button>
+                 ))}
+                 <button onClick={handleReset} className="w-9 h-9 bg-red-50 text-red-400 border border-red-100 rounded-lg shadow-md flex items-center justify-center hover:bg-red-100 transition-all">
+                     <RefreshCw size={16} />
+                 </button>
+             </div>
          </div>
 
-         {/* 左侧建造栏 */}
-         <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
-            {BUILD_OPTIONS.map(opt => (
-                <button key={opt.type} onClick={() => handleBuild(opt.type)} className="group relative w-10 h-10 bg-white rounded-lg shadow-md border border-stone-200 hover:border-blue-400 hover:scale-105 transition-all flex items-center justify-center text-stone-400 hover:text-blue-500">
-                    <Construction size={18} />
-                    {/* Tooltip */}
-                    <div className="absolute left-full ml-2 bg-stone-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50">
-                        {opt.name}
-                    </div>
-                </button>
-            ))}
-            <div className="h-px w-4 bg-stone-200 mx-auto my-1"></div>
-            <button onClick={handleReset} className="w-10 h-10 bg-white text-red-400 border border-red-100 rounded-lg shadow-md hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors">
-                 <RefreshCw size={16} />
-            </button>
-         </div>
-
+         {/* 核心地图 */}
          <GameMap worldData={worldData} />
          
-         {/* 网格提示 */}
-         <div className="absolute bottom-2 right-2 text-[9px] font-mono text-stone-400/50 pointer-events-none">
-            ISOMETRIC_FLAT_VIEW
+         {/* 底部水印 */}
+         <div className="absolute bottom-3 left-4 text-[10px] font-bold text-stone-300 pointer-events-none tracking-widest">
+            AI TOWN SIMULATION v1.0
          </div>
       </div>
 
-      {/* 右侧：紧凑面板 */}
-      <div className="flex-1 flex flex-col min-w-[260px] max-w-[340px] bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
-        <div className="h-10 border-b border-stone-100 flex items-center px-3 justify-between bg-stone-50/30">
-            <div className="flex gap-1 bg-stone-100 p-0.5 rounded">
-                <button onClick={() => setSidebarTab('logs')} className={`px-2 py-0.5 text-[9px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='logs'?'bg-white shadow-sm text-stone-800':'text-stone-400'}`}><Terminal size={10}/> LOGS</button>
-                <button onClick={() => setSidebarTab('team')} className={`px-2 py-0.5 text-[9px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='team'?'bg-white shadow-sm text-stone-800':'text-stone-400'}`}><Users size={10}/> TEAM</button>
+      {/* --- 右侧：侧边栏 --- */}
+      <div className="flex-1 flex flex-col min-w-[300px] max-w-[360px] bg-white rounded-2xl overflow-hidden shadow-xl border-4 border-white">
+        
+        {/* Tab 切换 */}
+        <div className="h-14 border-b border-stone-100 flex items-center px-4 justify-between bg-stone-50/50">
+            <div className="flex bg-stone-200/50 p-1 rounded-lg">
+                <button onClick={() => setSidebarTab('logs')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-all ${sidebarTab==='logs'?'bg-white shadow-sm text-stone-800':'text-stone-400 hover:text-stone-500'}`}>LOGS</button>
+                <button onClick={() => setSidebarTab('team')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-all ${sidebarTab==='team'?'bg-white shadow-sm text-stone-800':'text-stone-400 hover:text-stone-500'}`}>AGENTS</button>
             </div>
-            <div className="text-[9px] font-mono text-stone-400">
-               <span className="text-blue-500 font-bold">{nextRefresh}s</span>
+            <div className="flex flex-col items-end">
+                <span className="text-[8px] font-bold text-stone-400">NEXT TICK</span>
+                <span className="text-sm font-black text-blue-500 font-mono">{nextRefresh}s</span>
             </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-white p-0 relative">
+        {/* 内容区域 */}
+        <div className="flex-1 overflow-y-auto bg-stone-50/30 p-0 relative">
             {sidebarTab === 'logs' && (
-                <div className="p-3 space-y-3">
+                <div className="p-4 space-y-3">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className={`relative pl-3 border-l-2 ${i===0?'border-blue-500':'border-stone-100'} pb-0.5`}>
-                            <div className="text-[8px] font-mono text-stone-300 mb-0.5 flex justify-between">
-                                <span>#{String(logs.length - i).padStart(3,'0')}</span>
-                                {i===0 && <span className="text-blue-500 font-bold">NEW</span>}
+                        <div key={i} className={`p-3 rounded-xl border ${i===0?'bg-white border-blue-200 shadow-sm':'bg-white/50 border-stone-100'} transition-all`}>
+                            <div className="flex justify-between items-center mb-1">
+                                <span className={`text-[9px] font-bold uppercase tracking-wider ${i===0?'text-blue-500':'text-stone-300'}`}>Event #{String(logs.length - i).padStart(3,'0')}</span>
+                                {i===0 && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>}
                             </div>
-                            <p className={`text-[10px] leading-relaxed ${i===0?'text-stone-800':'text-stone-400'}`}>{log}</p>
+                            <p className={`text-[11px] leading-relaxed ${i===0?'text-stone-700':'text-stone-400'}`}>{log}</p>
                         </div>
                     ))}
                     <div ref={logsEndRef} />
@@ -158,17 +145,19 @@ export default function Home() {
             )}
             
             {sidebarTab === 'team' && (
-                <div className="p-2 space-y-2">
+                <div className="p-4 space-y-3">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="flex items-center gap-2 p-2 rounded border border-stone-100 bg-stone-50/50">
-                            <SymbolAvatar name={agent.name} job={agent.job} />
+                        <div key={agent.id} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-stone-100 shadow-sm hover:border-blue-200 hover:shadow-md transition-all group">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm ${agent.job.includes('建筑') ? 'bg-amber-500' : agent.job.includes('领袖') ? 'bg-blue-500' : 'bg-emerald-500'}`}>
+                                {agent.name[0]}
+                            </div>
                             <div className="min-w-0 flex-1">
-                                <div className="flex justify-between items-baseline">
-                                    <span className="text-[11px] font-bold text-stone-700">{agent.name}</span>
-                                    <span className="text-[8px] text-stone-400 uppercase">{agent.job}</span>
+                                <div className="flex justify-between items-center mb-0.5">
+                                    <span className="text-xs font-bold text-stone-700">{agent.name}</span>
+                                    <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">{agent.job}</span>
                                 </div>
-                                <div className="text-[9px] text-stone-400 truncate mt-0.5">
-                                    {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Idle'}
+                                <div className="text-[10px] text-stone-500 truncate">
+                                    {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Thinking...'}
                                 </div>
                             </div>
                         </div>
