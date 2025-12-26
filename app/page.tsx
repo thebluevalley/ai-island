@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal, MapPin } from 'lucide-react';
+import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -74,7 +74,7 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-50 text-stone-400 gap-4">
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-100 text-stone-400 gap-4">
       <Activity className="animate-spin text-blue-400" size={24} />
       <div className="text-[10px] font-mono tracking-widest uppercase">Connecting...</div>
     </div>
@@ -90,9 +90,9 @@ export default function Home() {
   );
 
   return (
-    <div className="h-screen w-screen bg-[#f1f5f9] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
+    <div className="h-screen w-screen bg-[#e5e7eb] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
       
-      {/* 左侧：全屏沉浸地图 */}
+      {/* 左侧：全屏沉浸地图 (占比调大) */}
       <div className="flex-[4] relative bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
          
          {/* 顶部资源条 */}
@@ -125,7 +125,7 @@ export default function Home() {
          
          {/* 网格提示 */}
          <div className="absolute bottom-2 right-2 text-[9px] font-mono text-stone-400/50 pointer-events-none">
-            GRID_VIEW_ACTIVE
+            ISOMETRIC_FLAT_VIEW
          </div>
       </div>
 
