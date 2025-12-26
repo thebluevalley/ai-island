@@ -1,10 +1,10 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Home, Warehouse, Ambulance, Utensils, Castle, Construction, Anchor, Trees, Mountain } from 'lucide-react';
+import { Home, Warehouse, Ambulance, Utensils, Castle, Construction } from 'lucide-react';
 
 // --- 1. 配置参数 ---
-const TILE_SIZE = 32;   // 保持清晰的大格子
-const MAP_SIZE = 80;    // 80x80 地图
+const TILE_SIZE = 32;   // 大格子保持清晰度
+const MAP_SIZE = 80;    // 80x80 地图基础尺寸
 
 // --- 2. 纯净配色 ---
 const PALETTE: any = {
@@ -50,45 +50,49 @@ const smoothNoise = (x: number, y: number) => {
     return lerp(lerp(a, b, u_x), lerp(c, d, u_x), u_y);
 };
 
+// 分形噪声
 const fbm = (x: number, y: number) => {
     let total = 0;
     total += smoothNoise(x, y) * 0.5;
-    total += smoothNoise(x * 2, y * 2) * 0.25;
-    total += smoothNoise(x * 4, y * 4) * 0.125;
+    total += smoothNoise(x * 2.03, y * 2.03) * 0.25;
+    total += smoothNoise(x * 4.07, y * 4.07) * 0.125;
     return total; 
 };
 
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [viewState, setViewState] = useState({ scale: 0.5, x: 0, y: 0 });
+  // 初始 scale 设大一点，避免加载瞬间看到边缘
+  const [viewState, setViewState] = useState({ scale: 1.5, x: 0, y: 0 });
 
   const { agents, buildings } = worldData || { agents: [], buildings: [] };
 
-  // --- 1. 生成地形数据 (核心改动：半岛地形) ---
+  // --- 1. 生成自然半岛地形 (核心算法改进) ---
   const terrainMap = useMemo(() => {
     const map = new Uint8Array(MAP_SIZE * MAP_SIZE);
     
     for (let x = 0; x < MAP_SIZE; x++) {
       for (let y = 0; y < MAP_SIZE; y++) {
-        // 核心改动：不再计算中心距离，而是计算对角线渐变
-        // 左上角 (0,0) 为陆地腹地，右下角 (MAX, MAX) 为海洋
-        // gradient 范围大约在 0.0 (右下) 到 1.0 (左上) 之间
-        const gradient = 1.0 - ((x + y) / (MAP_SIZE * 1.8)); 
+        // 关键改进：坐标扭曲 (Domain Warping)
+        // 使用低频噪声来扭曲采样坐标，创造出蜿蜒自然的海岸线
+        const warpX = x + fbm(x * 0.02, y * 0.02) * 25;
+        const warpY = y + fbm(x * 0.02 + 5.2, y * 0.02 + 1.3) * 25;
 
-        // 使用极低频噪声来扭曲海岸线，使其自然
-        const n = fbm(x * 0.015, y * 0.015); 
+        // 基于扭曲后坐标的对角线渐变
+        // 使得陆地主要集中在左上方，但边界不规则
+        const gradient = 1.2 - ((warpX + warpY * 0.9) / (MAP_SIZE * 1.6));
+
+        // 添加一点高频细节噪声，让沙滩边缘更碎一点
+        const detail = smoothNoise(x * 0.1, y * 0.1) * 0.08;
         
-        // 组合渐变和噪声作为最终高度
-        const height = gradient * 0.6 + n * 0.4;
+        const height = gradient + detail;
 
-        // 重新调整阈值，确保大部分是陆地，右下角是海
-        let typeIdx = 0; // WATER (默认)
-        if (height > 0.75) typeIdx = 4;      // STONE (左上角高地)
-        else if (height > 0.55) typeIdx = 3; // FOREST (内陆森林)
-        else if (height > 0.28) typeIdx = 2; // GRASS (广阔平原)
-        else if (height > 0.22) typeIdx = 1; // SAND (海岸线)
-        // else WATER (右下角海域)
+        // 重新校准阈值，确保有大片陆地和自然过渡
+        let typeIdx = 0; // WATER (右下深海)
+        if (height > 0.70) typeIdx = 4;      // STONE (内陆高地)
+        else if (height > 0.48) typeIdx = 3; // FOREST (大片森林)
+        else if (height > 0.25) typeIdx = 2; // GRASS (广阔平原)
+        else if (height > 0.18) typeIdx = 1; // SAND (海岸线)
         
         map[y * MAP_SIZE + x] = typeIdx;
       }
@@ -96,7 +100,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
     return map;
   }, []);
 
-  // --- 2. Canvas 绘制 (地形 + 网格线) ---
+  // --- 2. Canvas 绘制 ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -115,11 +119,11 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
     const colors = [PALETTE.WATER, PALETTE.SAND, PALETTE.GRASS, PALETTE.FOREST, PALETTE.STONE];
 
-    // 1. 绘制底色
+    // 绘制底色
     ctx.fillStyle = PALETTE.WATER;
     ctx.fillRect(0, 0, totalPixelSize, totalPixelSize);
 
-    // 2. 绘制地形块
+    // 绘制地形块
     for (let y = 0; y < MAP_SIZE; y++) {
       for (let x = 0; x < MAP_SIZE; x++) {
         const typeIdx = terrainMap[y * MAP_SIZE + x];
@@ -130,10 +134,9 @@ export default function GameMap({ worldData }: { worldData: any }) {
       }
     }
 
-    // 3. 绘制满铺网格线
+    // 绘制网格线 (加深一点点以保持质感)
     ctx.beginPath();
-    // 稍微加深一点网格线，增加战术感
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; 
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)'; 
     ctx.lineWidth = 1;
 
     for (let x = 0; x <= MAP_SIZE; x++) {
@@ -150,7 +153,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
   }, [terrainMap]);
 
-  // --- 3. Auto-Fit View (全局适应) ---
+  // --- 3. Auto-Fit View (核心改动：覆盖模式 Cover Mode) ---
   useEffect(() => {
     const handleResize = () => {
       if (!containerRef.current) return;
@@ -160,47 +163,56 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
       const mapTotalSize = MAP_SIZE * TILE_SIZE;
 
+      // 计算宽和高的缩放比
       const scaleX = pW / mapTotalSize;
       const scaleY = pH / mapTotalSize;
-      const scale = Math.min(scaleX, scaleY) * 0.98; // 留极窄边距
+
+      // 关键改动：使用 Math.max 来确保填满容器
+      // 乘以 1.02 是为了留一点余量，防止计算误差导致边缘露白
+      const scale = Math.max(scaleX, scaleY) * 1.02; 
       
+      // 居中显示
       const x = (pW - mapTotalSize * scale) / 2;
       const y = (pH - mapTotalSize * scale) / 2;
       
       setViewState({ scale, x, y });
     };
+    // 监听 resize，并立即执行一次
     window.addEventListener('resize', handleResize);
-    setTimeout(handleResize, 200);
+    handleResize(); 
+    
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 坐标转换 (映射到较广阔的陆地区域)
+  // 坐标转换 (映射到陆地较多的区域)
   const getRealCoord = (lx: number, ly: number) => {
-      // 将逻辑坐标映射到地图的左中上区域（陆地腹地）
-      const spread = TILE_SIZE * 12; 
-      const offsetX = MAP_SIZE * TILE_SIZE * 0.3;
-      const offsetY = MAP_SIZE * TILE_SIZE * 0.3;
+      // 将逻辑坐标映射到地图左上方的陆地区域
+      const spread = TILE_SIZE * 10; 
+      const offsetX = MAP_SIZE * TILE_SIZE * 0.25;
+      const offsetY = MAP_SIZE * TILE_SIZE * 0.25;
       return {
           x: offsetX + lx * spread,
           y: offsetY + ly * spread
       };
   };
 
-  if (!worldData) return <div className="w-full h-full bg-blue-50 flex items-center justify-center text-blue-300 font-mono text-xs">LOADING TERRAIN...</div>;
+  if (!worldData) return <div className="w-full h-full bg-[#60a5fa] flex items-center justify-center text-white/50 font-mono text-xs">GENERATING WORLD...</div>;
 
   return (
-    // 外层容器底色设为深一点的海水色
+    // 外层容器背景色设为深海色，虽然理论上不会露出来
     <div ref={containerRef} className="w-full h-full bg-[#3b82f6] relative overflow-hidden select-none">
       
       <div 
-        className="absolute origin-top-left shadow-2xl bg-[#60a5fa] transition-transform duration-500 ease-out"
+        // 移除所有阴影和圆角，确保无缝填满
+        className="absolute origin-center transition-transform duration-300 ease-out bg-[#60a5fa]"
         style={{
           width: MAP_SIZE * TILE_SIZE,
           height: MAP_SIZE * TILE_SIZE,
-          transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`,
+          // 使用 translate3d 开启硬件加速
+          transform: `translate3d(${viewState.x}px, ${viewState.y}px, 0) scale(${viewState.scale})`,
         }}
       >
-        {/* 地形 + 网格 Canvas */}
+        {/* 地形 Canvas */}
         <canvas ref={canvasRef} className="absolute inset-0 z-0" />
 
         {/* 建筑层 */}
