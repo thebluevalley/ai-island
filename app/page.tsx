@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Terminal, Users, Map, Clock, Box } from 'lucide-react';
+import { Play, Pause, Terminal, Users, Map, Clock } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
 
 const RESOURCES = [
-  { name: 'Funds', value: '$12,500', color: 'text-stone-600' },
-  { name: 'Pop', value: '128', color: 'text-stone-600' },
-  { name: 'Happiness', value: '98%', color: 'text-emerald-500' },
+  { name: 'Treasury', value: '$450K', color: 'text-stone-600' },
+  { name: 'Citizens', value: '3,240', color: 'text-stone-600' },
+  { name: 'Approval', value: '94%', color: 'text-emerald-500' },
 ];
 
 export default function Home() {
@@ -46,8 +46,8 @@ export default function Home() {
 
   if (!worldData) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#fafafa] text-stone-300 gap-4 font-sans">
-      <div className="w-10 h-10 border-4 border-stone-100 border-t-stone-400 rounded-full animate-spin"></div>
-      <div className="text-xs tracking-widest text-stone-400 uppercase">Loading City...</div>
+      <div className="w-10 h-10 border-4 border-stone-200 border-t-stone-400 rounded-full animate-spin"></div>
+      <div className="text-xs tracking-widest text-stone-400 uppercase">Constructing Metropolis...</div>
     </div>
   );
 
@@ -63,10 +63,10 @@ export default function Home() {
          <div className="absolute top-4 left-4 right-4 h-12 bg-white/95 backdrop-blur-md rounded-xl border border-stone-100 flex items-center justify-between px-4 shadow-sm z-10">
              <div className="flex items-center gap-2">
                  <div className="bg-stone-800 text-white font-bold px-2 py-1 rounded-md text-xs flex gap-1 items-center">
-                    <Map size={12}/> AI CITY
+                    <Map size={12}/> GRAND CITY
                  </div>
                  <div className="flex items-center gap-1 text-xs text-stone-400 font-mono border-l border-stone-200 pl-2">
-                    <Clock size={12}/> DAY {Math.floor(tick / 24) + 1}
+                    <Clock size={12}/> YEAR {Math.floor(tick / 365) + 1} DAY {tick % 365}
                  </div>
              </div>
 
@@ -100,13 +100,13 @@ export default function Home() {
                 onClick={() => setSidebarTab('logs')}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sidebarTab==='logs'?'bg-stone-50 text-stone-800':'text-stone-400 hover:bg-stone-50'}`}
             >
-                <Terminal size={14} /> EVENTS
+                <Terminal size={14} /> CITY LOGS
             </button>
             <button 
                 onClick={() => setSidebarTab('team')}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sidebarTab==='team'?'bg-stone-50 text-stone-800':'text-stone-400 hover:bg-stone-50'}`}
             >
-                <Users size={14} /> CITIZENS
+                <Users size={14} /> POPULATION
             </button>
         </div>
 
@@ -118,7 +118,7 @@ export default function Home() {
                         <div key={i} className={`p-2 rounded-lg border ${i===0?'bg-emerald-50/50 border-emerald-100 text-emerald-800':'border-stone-100 text-stone-500'}`}>
                             <div className="flex justify-between mb-0.5 opacity-40 text-[9px]">
                                 <span>#{String(logs.length - i).padStart(4,'0')}</span>
-                                {i===0 && <span>LIVE</span>}
+                                {i===0 && <span>NEW</span>}
                             </div>
                             <p className="leading-relaxed">{log}</p>
                         </div>
@@ -140,7 +140,7 @@ export default function Home() {
                                     <span className="text-[9px] bg-stone-50 px-1.5 py-0.5 rounded-full text-stone-400">{agent.job}</span>
                                 </div>
                                 <div className="text-[10px] text-stone-400 truncate mt-0.5">
-                                    {agent.actionLog ? `> ${agent.actionLog.replace(/[“|”]/g,'')}` : '> Resting...'}
+                                    {agent.actionLog ? `> ${agent.actionLog.replace(/[“|”]/g,'')}` : '> Idle'}
                                 </div>
                             </div>
                         </div>
