@@ -45,12 +45,13 @@ const random = (x: number, y: number) => {
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [viewState, setViewState] = useState({ scale: 0, x: 0, y: 0 });
+  const [fontSize, setFontSize] = useState(12);
 
   const { agents } = worldData || { agents: [] };
 
   const mapData = useMemo(() => {
-    const grid = new Uint8Array(MAP_COLS * MAP_ROWS).fill(0).map(() => ({ 
+    // 修复点：使用普通 Array 存储对象，而不是 Uint8Array
+    const grid = new Array(MAP_COLS * MAP_ROWS).fill(null).map(() => ({ 
         char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS 
     }));
     
@@ -100,10 +101,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const sw = BLOCK_W - mainRoadW;
             const sh = BLOCK_H - mainRoadW;
 
-            // 区域中心坐标
-            const cx = sx + sw/2;
-            const cy = sy + sh/2;
-
             // A. 中央公园 (定点：第二行第二列)
             if (bx === 1 && by === 1) {
                 // 森林
@@ -118,15 +115,9 @@ export default function GameMap({ worldData }: { worldData: any }) {
             }
 
             // B. 公共/商业街区 (对角线 + 中心周围)
-            // 规则：只要不是边缘的街区，都有可能是商业区
             const isCivicZone = (bx+by)%2 === 0 && !(bx===1 && by===1);
 
             if (isCivicZone) {
-                // === 生成 2-4 栋公共建筑 ===
-                // 将街区分为 4 个象限
-                const qW = Math.floor(sw/2);
-                const qH = Math.floor(sh/2);
-                
                 // 铺广场地面
                 for(let i=0; i<50; i++) {
                     const rx = sx + Math.floor(random(sx+i, sy)*sw);
@@ -136,10 +127,13 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
                 const quadrants = [
                     {x: sx+1, y: sy+1},
-                    {x: sx+qW+1, y: sy+1},
-                    {x: sx+1, y: sy+qH+1},
-                    {x: sx+qW+1, y: sy+qH+1}
+                    {x: sx+Math.floor(sw/2)+1, y: sy+1},
+                    {x: sx+1, y: sy+Math.floor(sh/2)+1},
+                    {x: sx+Math.floor(sw/2)+1, y: sy+Math.floor(sh/2)+1}
                 ];
+
+                const qW = Math.floor(sw/2);
+                const qH = Math.floor(sh/2);
 
                 // 决定建几栋 (2-4)
                 const count = 2 + Math.floor(random(bx, by) * 2.9); 
@@ -150,11 +144,10 @@ export default function GameMap({ worldData }: { worldData: any }) {
                     const bW = 8 + Math.floor(random(q.x, q.y)*6); // 8-13
                     const bH = 6 + Math.floor(random(q.y, q.x)*3); // 6-8
                     
-                    // 确保不越界
                     const drawW = Math.min(bW, qW-2);
                     const drawH = Math.min(bH, qH-2);
 
-                    const type = i===0 ? 'CIV' : 'COM'; // 第一栋必定是CIVIC
+                    const type = i===0 ? 'CIV' : 'COM'; 
                     drawBuilding(q.x + Math.floor((qW-drawW)/2), q.y + Math.floor((qH-drawH)/2), drawW, drawH, type);
                 }
                 continue;
@@ -166,8 +159,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
             fillRect(sx, sy + sh/2, sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
             setCell(sx+sw/2, sy+sh/2, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
 
-            // 4个小地块，每个再尝试建 2 栋 (2x2x2 = 8 栋/block) 或 1 栋大房
-            // 简化逻辑：每个象限建 1-2 栋
+            // 4个小地块
             const subW = Math.floor(sw/2);
             const subH = Math.floor(sh/2);
             
@@ -177,13 +169,11 @@ export default function GameMap({ worldData }: { worldData: any }) {
             ];
 
             resQuads.forEach((q, idx) => {
-                // 每个小地块内部
-                const innerX = q.x + (q.x > sx ? 1 : 0); // 让出道路
+                const innerX = q.x + (q.x > sx ? 1 : 0);
                 const innerY = q.y + (q.y > sy ? 1 : 0);
                 const innerW = subW - 1;
                 const innerH = subH - 1;
 
-                // 尝试建两栋小的
                 if (random(innerX, innerY) > 0.4) {
                     const houseW = 5, houseH = 4;
                     // 房1
@@ -193,10 +183,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
                     if(innerW > houseW*2 && innerH > houseH*2)
                         drawBuilding(innerX+innerW-houseW-1, innerY+innerH-houseH-1, houseW, houseH, 'RES');
                     
-                    // 种树
                     setCell(innerX+innerW-2, innerY+2, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 } else {
-                    // 建一栋大的
                     const houseW = 8, houseH = 6;
                     drawBuilding(innerX + Math.floor((innerW-houseW)/2), innerY + Math.floor((innerH-houseH)/2), houseW, houseH, 'RES');
                 }
@@ -218,18 +206,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const { width, height } = entry.contentRect;
             const charW = width / MAP_COLS;
             const charH = height / MAP_ROWS;
-            // 确保能填满容器
             const size = Math.floor(Math.min(charW / 0.6, charH));
-            // 允许字号更大一点以填满
             const finalSize = Math.max(6, size); 
-            
-            // 调整 canvas 尺寸匹配容器，而不是匹配字号 (消除黑边)
-            // 我们通过 scale 来适配
-            const scaleX = width / (MAP_COLS * (finalSize * 0.6));
-            const scaleY = height / (MAP_ROWS * finalSize);
-            
-            // 这里我们使用一种 trick：让 canvas 像素尺寸等于字符网格尺寸 * 字号
-            // 然后通过 CSS 让它填满容器
             setFontSize(finalSize);
         }
     });
@@ -241,7 +219,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         const metrics = ctx.measureText('M');
         const charW = metrics.width;
-        const charH = fontSize; // 近似
+        const charH = fontSize; 
 
         const w = MAP_COLS * charW;
         const h = MAP_ROWS * charH;
@@ -250,13 +228,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
         canvas.height = h * dpr;
         ctx.scale(dpr, dpr);
         
-        // 这里的 style 决定了它在屏幕上的显示大小
-        // 我们将其设为 100% 以填满 flex 容器
         canvas.style.width = '100%';
         canvas.style.height = '100%';
-        // 保持比例可能导致留白，如果设为 100% 可能会拉伸
-        // 更好的做法是 object-fit: contain 的效果，但在 canvas 里很难
-        // 我们这里让它保持比例，居中
         canvas.style.objectFit = 'contain';
 
         ctx.fillStyle = COLORS.BG;
