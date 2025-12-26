@@ -3,8 +3,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Home, Warehouse, Ambulance, Utensils, Castle, Construction, Anchor, Trees, Mountain } from 'lucide-react';
 
 // --- 1. 配置参数 ---
-const TILE_SIZE = 32;   // 保持大格子，缩小后依然清晰
-const MAP_SIZE = 80;    // 80x80 大地图
+const TILE_SIZE = 32;   // 格子变大，看得更清
+const MAP_SIZE = 80;    // 80x80 地图，足够大
 
 // --- 2. 纯净配色 ---
 const PALETTE: any = {
@@ -61,7 +61,7 @@ const fbm = (x: number, y: number) => {
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [viewState, setViewState] = useState({ scale: 0.5, x: 0, y: 0 }); // 默认初始缩放小一点
+  const [viewState, setViewState] = useState({ scale: 1, x: 0, y: 0 });
 
   const { agents, buildings } = worldData || { agents: [], buildings: [] };
 
@@ -74,11 +74,12 @@ export default function GameMap({ worldData }: { worldData: any }) {
       for (let y = 0; y < MAP_SIZE; y++) {
         const dx = x - center;
         const dy = y - center;
-        // 距离场控制岛屿大小
-        const dist = Math.sqrt(dx*dx + dy*dy) / (MAP_SIZE / 2.5);
+        // 放大岛屿半径，让陆地占满大部分区域
+        // 原来除以 2.2，现在除以 2.8，这意味着岛屿半径变大了
+        const dist = Math.sqrt(dx*dx + dy*dy) / (MAP_SIZE / 2.8);
 
-        const n = fbm(x * 0.03, y * 0.03); // 低频噪声
-        const height = n - (dist * dist * 0.6); // 边缘衰减
+        const n = fbm(x * 0.03, y * 0.03); // 更低频噪声，地形更平缓
+        const height = n - (dist * dist * 0.5); // 边缘衰减变慢
 
         let typeIdx = 0; // WATER
         if (height > 0.50) typeIdx = 4;      // STONE
@@ -100,22 +101,20 @@ export default function GameMap({ worldData }: { worldData: any }) {
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const totalPixelSize = MAP_SIZE * TILE_SIZE;
-
     // 设置实际分辨率
-    canvas.width = totalPixelSize * dpr;
-    canvas.height = totalPixelSize * dpr;
+    canvas.width = MAP_SIZE * TILE_SIZE * dpr;
+    canvas.height = MAP_SIZE * TILE_SIZE * dpr;
     ctx.scale(dpr, dpr);
     
     // 设置 CSS 显示尺寸
-    canvas.style.width = `${totalPixelSize}px`;
-    canvas.style.height = `${totalPixelSize}px`;
+    canvas.style.width = `${MAP_SIZE * TILE_SIZE}px`;
+    canvas.style.height = `${MAP_SIZE * TILE_SIZE}px`;
 
     const colors = [PALETTE.WATER, PALETTE.SAND, PALETTE.GRASS, PALETTE.FOREST, PALETTE.STONE];
 
     // 1. 绘制底色
     ctx.fillStyle = PALETTE.WATER;
-    ctx.fillRect(0, 0, totalPixelSize, totalPixelSize);
+    ctx.fillRect(0, 0, MAP_SIZE * TILE_SIZE, MAP_SIZE * TILE_SIZE);
 
     // 2. 绘制地形块
     for (let y = 0; y < MAP_SIZE; y++) {
@@ -131,57 +130,57 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
     // 3. 绘制满铺网格线 (Grid Lines)
     ctx.beginPath();
-    // 稍微调淡一点网格线，因为镜头拉远了，太深会显乱
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'; 
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; // 10% 透明度的黑线
     ctx.lineWidth = 1;
 
     // 竖线
     for (let x = 0; x <= MAP_SIZE; x++) {
         const pos = x * TILE_SIZE;
         ctx.moveTo(pos, 0);
-        ctx.lineTo(pos, totalPixelSize);
+        ctx.lineTo(pos, MAP_SIZE * TILE_SIZE);
     }
     // 横线
     for (let y = 0; y <= MAP_SIZE; y++) {
         const pos = y * TILE_SIZE;
         ctx.moveTo(0, pos);
-        ctx.lineTo(totalPixelSize, pos);
+        ctx.lineTo(MAP_SIZE * TILE_SIZE, pos);
     }
     ctx.stroke();
 
   }, [terrainMap]);
 
-  // --- 3. Auto-Fit View (关键改动：全局适应) ---
+  // --- 3. 自动聚焦视口 (Zoom In) ---
   useEffect(() => {
     const handleResize = () => {
       if (!containerRef.current) return;
       const pW = containerRef.current.clientWidth;
       const pH = containerRef.current.clientHeight;
-      if (pW === 0 || pH === 0) return;
+      if (pW === 0) return;
 
-      const mapTotalSize = MAP_SIZE * TILE_SIZE;
+      const mapTotalW = MAP_SIZE * TILE_SIZE;
+      const mapTotalH = MAP_SIZE * TILE_SIZE;
 
-      // 计算缩放比例：让整个地图能塞进容器
-      // 取宽比和高比中较小的一个，保证完整显示
-      const scaleX = pW / mapTotalSize;
-      const scaleY = pH / mapTotalSize;
-      // 乘以 0.95 留出 5% 的美观边距
-      const scale = Math.min(scaleX, scaleY) * 0.95; 
+      // 核心修改：不再显示全图，而是聚焦
+      // 目标：屏幕宽度大约显示 35 个格子 (35 * 32px = 1120px)
+      // 如果屏幕是 1920，scale 就是 1920 / 1120 ≈ 1.7
+      // 如果屏幕是 800，scale 就是 800 / 1120 ≈ 0.7
+      const targetVisibleTiles = 35; 
+      const scale = pW / (targetVisibleTiles * TILE_SIZE);
       
-      // 计算居中偏移量
-      const x = (pW - mapTotalSize * scale) / 2;
-      const y = (pH - mapTotalSize * scale) / 2;
+      // 始终居中
+      const x = (pW - mapTotalW * scale) / 2;
+      const y = (pH - mapTotalH * scale) / 2;
       
       setViewState({ scale, x, y });
     };
     window.addEventListener('resize', handleResize);
-    // 稍微延时确保容器渲染完成
-    setTimeout(handleResize, 200);
+    setTimeout(handleResize, 100);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // 坐标转换
   const getRealCoord = (lx: number, ly: number) => {
+      // 映射逻辑坐标到地图中心区域
       const center = (MAP_SIZE * TILE_SIZE) / 2;
       const spread = (MAP_SIZE * TILE_SIZE) / 6; // 分散系数
       return {
@@ -193,15 +192,16 @@ export default function GameMap({ worldData }: { worldData: any }) {
   if (!worldData) return <div className="w-full h-full bg-blue-50 flex items-center justify-center text-blue-300 font-mono text-xs">LOADING TERRAIN...</div>;
 
   return (
-    // 外层容器：使用海水的颜色作为底色
+    // 外层容器：使用海水的颜色作为底色，这样即使地图没铺满也不会穿帮
     <div ref={containerRef} className="w-full h-full bg-[#60a5fa] relative overflow-hidden select-none">
       
       <div 
-        className="absolute origin-top-left shadow-2xl bg-[#60a5fa] transition-transform duration-500 ease-out" // 增加平滑过渡
+        className="absolute origin-top-left shadow-2xl" 
         style={{
           width: MAP_SIZE * TILE_SIZE,
           height: MAP_SIZE * TILE_SIZE,
           transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`,
+          // 移除了圆角，让地图充满
         }}
       >
         {/* 地形 + 网格 Canvas */}
@@ -216,10 +216,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
                     className="absolute z-10 flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
                     style={{ left: pos.x, top: pos.y }}
                 >
-                    {/* 建筑本身 (镜头拉远后，建筑可以稍微放大一点点) */}
-                    <div className="transform scale-110 origin-bottom">
-                        {BUILDINGS[b.type] || <Construction className="text-stone-600" size={32} />}
-                    </div>
+                    {/* 建筑本身 */}
+                    {BUILDINGS[b.type] || <Construction className="text-stone-600" size={32} />}
                     {/* 建筑名称 */}
                     <div className="mt-1 px-1.5 py-0.5 bg-white/90 backdrop-blur rounded text-[10px] font-bold text-stone-700 shadow-sm whitespace-nowrap border border-stone-200">
                         {b.name}
@@ -232,8 +230,10 @@ export default function GameMap({ worldData }: { worldData: any }) {
         {agents.map((agent: any) => {
             const basePos = getRealCoord(agent.x, agent.y);
             const seed = agent.id * 73;
+            // 随机偏移量调大，因为 TILE_SIZE 变大了
             const offsetX = (Math.sin(seed) * TILE_SIZE * 2); 
             const offsetY = (Math.cos(seed) * TILE_SIZE * 2);
+            
             const isTalking = agent.actionLog && agent.actionLog.includes('“');
 
             return (
@@ -250,16 +250,16 @@ export default function GameMap({ worldData }: { worldData: any }) {
                             </div>
                         )}
                         
-                        {/* 角色圆点 - 镜头拉远后稍微放大一点以保持可见性 */}
+                        {/* 角色圆点 - 变大一点 */}
                         <div className={`
-                            w-6 h-6 rounded-full border-2 border-white shadow-md flex items-center justify-center transform scale-110
+                            w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center
                             ${agent.job.includes('建筑') ? 'bg-amber-500' : agent.job.includes('领袖') ? 'bg-blue-600' : 'bg-emerald-500'}
                         `}>
                             {/* 职业首字母 */}
-                            <span className="text-[9px] text-white font-black">{agent.job[0]}</span>
+                            <span className="text-[8px] text-white font-black">{agent.job[0]}</span>
                         </div>
 
-                        {/* 名字 (常驻显示) */}
+                        {/* 名字 (常驻显示，不再隐藏) */}
                         <div className="absolute top-full mt-1 bg-black/60 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
                             {agent.name}
                         </div>

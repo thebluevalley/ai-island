@@ -74,7 +74,7 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-100 text-stone-400 gap-4">
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-50 text-stone-400 gap-4">
       <Activity className="animate-spin text-blue-400" size={24} />
       <div className="text-[10px] font-mono tracking-widest uppercase">Connecting...</div>
     </div>
@@ -90,9 +90,9 @@ export default function Home() {
   );
 
   return (
-    <div className="h-screen w-screen bg-[#e5e7eb] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
+    <div className="h-screen w-screen bg-[#f1f5f9] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
       
-      {/* 左侧：全屏沉浸地图 (占比调大) */}
+      {/* 左侧：全屏沉浸地图 */}
       <div className="flex-[4] relative bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
          
          {/* 顶部资源条 */}
@@ -125,7 +125,7 @@ export default function Home() {
          
          {/* 网格提示 */}
          <div className="absolute bottom-2 right-2 text-[9px] font-mono text-stone-400/50 pointer-events-none">
-            GLOBAL_VIEW
+            GRID_VIEW_ACTIVE
          </div>
       </div>
 
@@ -160,15 +160,14 @@ export default function Home() {
             {sidebarTab === 'team' && (
                 <div className="p-2 space-y-2">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="flex items-center gap-2 p-2 rounded border border-stone-100 bg-stone-50/30 hover:border-blue-200 transition-colors">
+                        <div key={agent.id} className="flex items-center gap-2 p-2 rounded border border-stone-100 bg-stone-50/50">
                             <SymbolAvatar name={agent.name} job={agent.job} />
                             <div className="min-w-0 flex-1">
                                 <div className="flex justify-between items-baseline">
                                     <span className="text-[11px] font-bold text-stone-700">{agent.name}</span>
-                                    <span className="text-[8px] text-stone-400 uppercase bg-white px-1 rounded border border-stone-100">{agent.job}</span>
+                                    <span className="text-[8px] text-stone-400 uppercase">{agent.job}</span>
                                 </div>
-                                <div className="text-[9px] text-stone-400 truncate mt-0.5 flex items-center gap-1">
-                                    <div className={`w-1 h-1 rounded-full ${agent.actionLog ? 'bg-emerald-400 animate-pulse' : 'bg-stone-300'}`}></div>
+                                <div className="text-[9px] text-stone-400 truncate mt-0.5">
                                     {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Idle'}
                                 </div>
                             </div>
