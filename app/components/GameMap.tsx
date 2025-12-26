@@ -1,6 +1,6 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Home, Coffee, BookOpen, ShoppingBag, Trees, User } from 'lucide-react';
+import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, User } from 'lucide-react';
 
 // --- 1. AI Town 配置 ---
 const TILE_SIZE = 32;
@@ -46,7 +46,8 @@ export default function GameMap({ worldData }: { worldData: any }) {
   // --- 1. 程序化生成小镇布局 ---
   const townMap = useMemo(() => {
     const map = new Uint8Array(MAP_COLS * MAP_ROWS).fill(TILES.GRASS);
-    const furniture = []; // 存储家具位置
+    // 修复点：显式定义 furniture 数组的类型
+    const furniture: {x: number, y: number, type: number}[] = []; 
 
     // 辅助函数：画矩形块
     const fillRect = (x: number, y: number, w: number, h: number, type: number) => {
@@ -87,14 +88,13 @@ export default function GameMap({ worldData }: { worldData: any }) {
     // 1. 主干道 (十字形)
     const centerX = Math.floor(MAP_COLS/2);
     const centerY = Math.floor(MAP_ROWS/2);
-    const roadWidth = 4;
     
     // 横路
     fillRect(0, centerY - 2, MAP_COLS, 4, TILES.ROAD);
     // 竖路
     fillRect(centerX - 2, 0, 4, MAP_ROWS, TILES.ROAD);
 
-    // 2. 左上角：居民区 (Isabella & Tom's House)
+    // 2. 左上角：居民区
     buildRoom(4, 4, 12, 10, TILES.FLOOR_WOOD, "House A");
     buildRoom(20, 4, 10, 8, TILES.FLOOR_WOOD, "House B");
     buildRoom(4, 18, 12, 10, TILES.FLOOR_WOOD, "House C");
@@ -102,7 +102,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
     // 3. 右上角：学校/图书馆
     buildRoom(centerX + 6, 6, 20, 14, TILES.FLOOR_TILE, "Library");
 
-    // 4. 左下角：商店 & 咖啡馆 (Hobbs Cafe)
+    // 4. 左下角：商店 & 咖啡馆
     buildRoom(6, centerY + 6, 16, 12, TILES.FLOOR_TILE, "Cafe");
     buildRoom(26, centerY + 10, 10, 8, TILES.FLOOR_WOOD, "Mart");
 
@@ -251,7 +251,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
       const mapW = MAP_COLS * TILE_SIZE;
       
-      // 保证屏幕能看到 20~25 个格子宽，这样看得很清楚
+      // 保证屏幕能看到 20~25 个格子宽
       const targetCols = 24; 
       const scale = pW / (targetCols * TILE_SIZE);
       
@@ -282,8 +282,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
         {/* 顶层：角色 Entity */}
         {agents.map((agent: any) => {
-            // 简单的坐标映射 (示例数据可能还是 0-80，这里做一个简单的缩放映射到 0-64)
-            // 实际项目中后端应该返回真实的 tile 坐标
+            // 坐标映射
             const tx = (agent.x / 80) * MAP_COLS;
             const ty = (agent.y / 80) * MAP_ROWS;
             
