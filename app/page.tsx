@@ -1,25 +1,21 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal, MapPin } from 'lucide-react';
+import { Play, Pause, FastForward, Terminal, Users, Map as MapIcon, Box } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
-type Resources = { wood: number; stone: number; food: number; medicine: number; };
 
-const BUILD_OPTIONS = [
-  { type: "House", name: "House", cost: "50 W" },
-  { type: "Warehouse", name: "Store", cost: "80 W" },
-  { type: "Clinic", name: "Clinic", cost: "100 W" },
-  { type: "Kitchen", name: "Kitchen", cost: "60 W" },
-  { type: "Tower", name: "Tower", cost: "120 W" }
+const RESOURCES = [
+  { name: 'Wood', value: 320, color: 'text-amber-400' },
+  { name: 'Stone', value: 150, color: 'text-stone-400' },
+  { name: 'Gold', value: 1200, color: 'text-yellow-400' },
 ];
 
 export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [nextRefresh, setNextRefresh] = useState(45);
+  const [tick, setTick] = useState(0);
   const [sidebarTab, setSidebarTab] = useState<'logs' | 'team'>('logs');
-
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
@@ -30,30 +26,17 @@ export default function Home() {
       const data = await res.json();
       if (data.success) {
         setWorldData(data.world);
-        setNextRefresh(45);
+        setTick(t => t + 1);
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  const handleReset = async () => {
-    if (!confirm("Reset Simulation?")) return;
-    await fetch('/api/reset', { method: 'POST' });
-    window.location.reload();
-  };
-
-  const handleBuild = (type: string) => alert(`Construction: ${type}`);
-
   useEffect(() => { fetchData(); }, []);
   
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNextRefresh(prev => {
-        if (prev <= 1) { fetchData(); return 45; }
-        return prev - 1;
-      });
-    }, 1000);
+    const timer = setInterval(() => { fetchData(); }, 2000); // 2秒刷新一次，模拟游戏Tick
     return () => clearInterval(timer);
-  }, [loading]);
+  }, []);
 
   useEffect(() => {
     if (sidebarTab === 'logs' && logsEndRef.current) {
@@ -62,83 +45,90 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#f0f4f8] text-stone-400 gap-4 font-mono">
-      <div className="w-12 h-12 border-4 border-stone-200 border-t-blue-400 rounded-full animate-spin"></div>
-      <div className="text-xs tracking-widest">LOADING AI TOWN...</div>
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#2c3e50] text-stone-300 gap-4 font-mono">
+      <div className="w-12 h-12 border-4 border-stone-500 border-t-emerald-400 rounded-full animate-spin"></div>
+      <div className="text-xs tracking-widest uppercase">Generating Smallville...</div>
     </div>
   );
 
-  const { agents, globalResources, logs } = worldData;
-
-  const ResourcePill = ({ label, value, color }: any) => (
-    <div className="flex items-center gap-2 bg-stone-50 px-3 py-1.5 rounded-lg border border-stone-100">
-       <span className="text-[10px] font-bold text-stone-400 uppercase">{label}</span>
-       <span className={`text-xs font-bold font-mono ${color}`}>{value}</span>
-    </div>
-  );
+  const { agents, logs } = worldData;
 
   return (
-    <div className="h-screen w-screen bg-[#e8eef2] overflow-hidden flex font-sans text-stone-600 p-4 gap-4">
+    <div className="h-screen w-screen bg-[#1a252f] overflow-hidden flex font-sans text-stone-300">
       
-      {/* --- 左侧：游戏世界 (RPG Style) --- */}
-      <div className="flex-[3] relative bg-white rounded-2xl overflow-hidden shadow-xl border-4 border-white">
+      {/* 左侧：游戏视窗 */}
+      <div className="flex-1 relative flex flex-col min-w-0">
          
-         {/* 顶部状态栏 */}
-         <div className="absolute top-4 left-4 right-4 z-40 flex justify-between items-start pointer-events-none">
-             <div className="flex gap-2 pointer-events-auto">
-                <ResourcePill label="Wood" value={globalResources.wood} color="text-amber-600" />
-                <ResourcePill label="Food" value={globalResources.food} color="text-emerald-600" />
-                <ResourcePill label="Meds" value={globalResources.medicine} color="text-rose-500" />
+         {/* 顶部 HUD */}
+         <div className="h-14 bg-[#2c3e50] border-b border-black/20 flex items-center justify-between px-6 shadow-md z-10 shrink-0">
+             <div className="flex items-center gap-2">
+                 <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+                 <span className="font-bold text-white tracking-wide">AI TOWN</span>
+                 <span className="text-xs text-stone-500 ml-2 font-mono">Build v2.1</span>
              </div>
-             
-             <div className="flex gap-2 pointer-events-auto">
-                 {/* 修正点：这里原来写成了 BUILDINGS.map，现改为正确的 BUILD_OPTIONS.map */}
-                 {BUILD_OPTIONS.map((opt:any) => (
-                    <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-9 h-9 bg-white rounded-lg shadow-md border border-stone-200 flex items-center justify-center text-stone-400 hover:text-blue-500 hover:scale-110 transition-all">
-                        <Construction size={16} />
-                    </button>
+
+             <div className="flex gap-6 font-mono text-sm">
+                 {RESOURCES.map(r => (
+                     <div key={r.name} className="flex gap-2">
+                         <span className="text-stone-500 uppercase text-xs font-bold mt-0.5">{r.name}</span>
+                         <span className={`font-bold ${r.color}`}>{r.value}</span>
+                     </div>
                  ))}
-                 <button onClick={handleReset} className="w-9 h-9 bg-red-50 text-red-400 border border-red-100 rounded-lg shadow-md flex items-center justify-center hover:bg-red-100 transition-all">
-                     <RefreshCw size={16} />
-                 </button>
+             </div>
+
+             <div className="flex gap-2">
+                 <button className="p-2 hover:bg-white/10 rounded text-white"><Play size={16} fill="currentColor" /></button>
+                 <button className="p-2 hover:bg-white/10 rounded text-stone-400"><Pause size={16} fill="currentColor" /></button>
+                 <button className="p-2 hover:bg-white/10 rounded text-stone-400"><FastForward size={16} fill="currentColor" /></button>
              </div>
          </div>
 
          {/* 核心地图 */}
-         <GameMap worldData={worldData} />
-         
-         {/* 底部水印 */}
-         <div className="absolute bottom-3 left-4 text-[10px] font-bold text-stone-300 pointer-events-none tracking-widest">
-            AI TOWN SIMULATION v1.0
+         <div className="flex-1 relative bg-black">
+             <GameMap worldData={worldData} />
+             
+             {/* 覆盖层信息 */}
+             <div className="absolute top-4 left-4 flex flex-col gap-1 pointer-events-none">
+                 <div className="bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm font-mono">
+                     TICK: {tick}
+                 </div>
+                 <div className="bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm font-mono">
+                     AGENTS: {agents.length}
+                 </div>
+             </div>
          </div>
       </div>
 
-      {/* --- 右侧：侧边栏 --- */}
-      <div className="flex-1 flex flex-col min-w-[300px] max-w-[360px] bg-white rounded-2xl overflow-hidden shadow-xl border-4 border-white">
+      {/* 右侧：信息面板 */}
+      <div className="w-[320px] bg-[#2c3e50] border-l border-black/20 flex flex-col shadow-2xl z-20">
         
-        {/* Tab 切换 */}
-        <div className="h-14 border-b border-stone-100 flex items-center px-4 justify-between bg-stone-50/50">
-            <div className="flex bg-stone-200/50 p-1 rounded-lg">
-                <button onClick={() => setSidebarTab('logs')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-all ${sidebarTab==='logs'?'bg-white shadow-sm text-stone-800':'text-stone-400 hover:text-stone-500'}`}>LOGS</button>
-                <button onClick={() => setSidebarTab('team')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-all ${sidebarTab==='team'?'bg-white shadow-sm text-stone-800':'text-stone-400 hover:text-stone-500'}`}>AGENTS</button>
-            </div>
-            <div className="flex flex-col items-end">
-                <span className="text-[8px] font-bold text-stone-400">NEXT TICK</span>
-                <span className="text-sm font-black text-blue-500 font-mono">{nextRefresh}s</span>
-            </div>
+        {/* Tab Header */}
+        <div className="flex border-b border-black/10">
+            <button 
+                onClick={() => setSidebarTab('logs')}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${sidebarTab==='logs'?'bg-[#34495e] text-white border-b-2 border-emerald-500':'text-stone-500 hover:text-stone-300'}`}
+            >
+                <Terminal size={14} /> System
+            </button>
+            <button 
+                onClick={() => setSidebarTab('team')}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${sidebarTab==='team'?'bg-[#34495e] text-white border-b-2 border-blue-500':'text-stone-500 hover:text-stone-300'}`}
+            >
+                <Users size={14} /> Agents
+            </button>
         </div>
 
-        {/* 内容区域 */}
-        <div className="flex-1 overflow-y-auto bg-stone-50/30 p-0 relative">
+        {/* 内容 */}
+        <div className="flex-1 overflow-y-auto p-0 font-mono text-xs">
             {sidebarTab === 'logs' && (
                 <div className="p-4 space-y-3">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className={`p-3 rounded-xl border ${i===0?'bg-white border-blue-200 shadow-sm':'bg-white/50 border-stone-100'} transition-all`}>
-                            <div className="flex justify-between items-center mb-1">
-                                <span className={`text-[9px] font-bold uppercase tracking-wider ${i===0?'text-blue-500':'text-stone-300'}`}>Event #{String(logs.length - i).padStart(3,'0')}</span>
-                                {i===0 && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>}
+                        <div key={i} className={`p-2.5 rounded border-l-2 ${i===0?'bg-emerald-900/20 border-emerald-500 text-emerald-100':'border-stone-600 text-stone-400'}`}>
+                            <div className="flex justify-between mb-1 opacity-50 text-[10px]">
+                                <span>EVENT #{String(logs.length - i).padStart(3,'0')}</span>
+                                {i===0 && <span>NOW</span>}
                             </div>
-                            <p className={`text-[11px] leading-relaxed ${i===0?'text-stone-700':'text-stone-400'}`}>{log}</p>
+                            <p className="leading-relaxed">{log}</p>
                         </div>
                     ))}
                     <div ref={logsEndRef} />
@@ -146,19 +136,21 @@ export default function Home() {
             )}
             
             {sidebarTab === 'team' && (
-                <div className="p-4 space-y-3">
+                <div className="p-2 space-y-2">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-stone-100 shadow-sm hover:border-blue-200 hover:shadow-md transition-all group">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm ${agent.job.includes('建筑') ? 'bg-amber-500' : agent.job.includes('领袖') ? 'bg-blue-500' : 'bg-emerald-500'}`}>
+                        <div key={agent.id} className="bg-[#34495e] p-2 rounded flex items-start gap-3 border border-transparent hover:border-stone-500 transition-colors cursor-pointer">
+                            <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center text-white font-bold shadow-sm ${agent.job.includes('建筑') ? 'bg-[#f1c40f]' : agent.job.includes('领袖') ? 'bg-[#3498db]' : 'bg-[#e74c3c]'}`}>
                                 {agent.name[0]}
                             </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex justify-between items-center mb-0.5">
-                                    <span className="text-xs font-bold text-stone-700">{agent.name}</span>
-                                    <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">{agent.job}</span>
+                            <div className="min-w-0">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-bold text-stone-200">{agent.name}</span>
                                 </div>
-                                <div className="text-[10px] text-stone-500 truncate">
-                                    {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Thinking...'}
+                                <div className="text-[10px] text-stone-400 truncate mt-0.5">
+                                    {agent.actionLog ? `> ${agent.actionLog.replace(/[“|”]/g,'')}` : '> Idle'}
+                                </div>
+                                <div className="w-full bg-black/30 h-1 mt-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-emerald-500 h-full" style={{width: `${agent.hp}%`}}></div>
                                 </div>
                             </div>
                         </div>
