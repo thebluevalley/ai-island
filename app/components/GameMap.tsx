@@ -32,6 +32,7 @@ const COLORS = {
   COBBLE:   '#e0e0e0', // 市中心地面更冷硬
   PLAZA:    '#fff8e1', // 广场暖色
   WATER:    '#b3e5fc',
+  TREE:     '#a5d6a7', // 修复：补充缺少的 TREE 颜色
 
   // 建筑材质
   WALL_RES: '#fffdfb',  // 暖白民居墙
