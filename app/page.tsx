@@ -7,16 +7,15 @@ type Agent = { id: number; name: string; job: string; hp: number; hunger: number
 
 const DEFAULT_DATA = {
     agents: [
-        { id: 1, name: "Builder", job: "Construct", x: 15, y: 15, actionLog: "Paving the main road..." },
-        { id: 2, name: "Mayor", job: "Civic", x: 90, y: 40, actionLog: "Inspecting the new park..." },
-        { id: 3, name: "Gardener", job: "Nature", x: 50, y: 20, actionLog: "Planting trees..." },
-        { id: 4, name: "Trader", job: "Commerce", x: 130, y: 60, actionLog: "Opening the shop..." },
-        { id: 5, name: "Artist", job: "Creativity", x: 160, y: 30, actionLog: "Sketching the fountain..." }
+        { id: 1, name: "Architect", job: "Construct", x: 15, y: 15, actionLog: "Drafting larger houses..." },
+        { id: 2, name: "Mayor", job: "Civic", x: 90, y: 40, actionLog: "Visiting the corner cafe..." },
+        { id: 3, name: "Planner", job: "Design", x: 50, y: 20, actionLog: "Adjusting street margins..." },
     ],
     logs: [
         "System initialized.",
-        "Grid Layout: 6x3 Spacious Blocks.",
-        "Connecting civic centers...",
+        "Residential zoning updated: Larger footprints (10x7).",
+        "Corner activation protocols engaged (Cafes/Parks).",
+        "Map padding applied: 4-cell margin.",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
 };
@@ -72,7 +71,7 @@ export default function Home() {
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> HD_ASCII</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 6x3 SPACIOUS</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> STREET_FRONT_LAYOUT</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
@@ -108,10 +107,10 @@ export default function Home() {
                     <div className="border border-[#2b2d35] p-2">
                         <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">LEGEND</div>
                         <div className="grid grid-cols-2 gap-y-2 text-[10px]">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>House</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>House (L)</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#8abeb7] text-[#8abeb7] flex items-center justify-center">#</div><span>Shop</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div><span>Civic</span></div>
-                            <div className="flex items-center gap-2"><span className="text-[#68856c]">♣</span><span>Park</span></div>
+                            <div className="flex items-center gap-2"><span className="text-[#e5c07b]">☕</span><span>Cafe</span></div>
                         </div>
                     </div>
                     <div>
