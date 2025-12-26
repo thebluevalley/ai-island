@@ -8,11 +8,11 @@ type NPC = { id: string; name: string; role: string; currentTask: string; };
 type Resources = { wood: number; stone: number; food: number; medicine: number; };
 
 const BUILD_OPTIONS = [
-  { type: "House", name: "House", cost: "50 Wood" },
-  { type: "Warehouse", name: "Storage", cost: "80 Wood" },
-  { type: "Clinic", name: "Clinic", cost: "100 Wood" },
-  { type: "Kitchen", name: "Kitchen", cost: "60 Wood" },
-  { type: "Tower", name: "Tower", cost: "120 Wood" }
+  { type: "House", name: "House", cost: "50 W" },
+  { type: "Warehouse", name: "Store", cost: "80 W" },
+  { type: "Clinic", name: "Clinic", cost: "100 W" },
+  { type: "Kitchen", name: "Kitchen", cost: "60 W" },
+  { type: "Tower", name: "Tower", cost: "120 W" }
 ];
 
 const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
@@ -23,7 +23,7 @@ const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
     else color = "bg-emerald-500";
     
     return (
-      <div className={`w-7 h-7 ${color} rounded-md flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0 border border-white/20`}>
+      <div className={`w-5 h-5 ${color} rounded flex items-center justify-center text-white text-[8px] font-bold shadow-sm shrink-0`}>
         {job[0]}
       </div>
     );
@@ -51,12 +51,12 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("Reset Simulation?")) return;
+    if (!confirm("Reset?")) return;
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
   };
 
-  const handleBuild = (type: string) => alert(`Order: ${type}`);
+  const handleBuild = (type: string) => alert(`Build ${type}`);
 
   useEffect(() => { fetchData(); }, []);
   
@@ -78,79 +78,78 @@ export default function Home() {
 
   if (!worldData) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-stone-50 text-stone-400 gap-4">
-      <Activity className="animate-spin text-blue-400" size={32} />
-      <div className="text-xs font-mono tracking-widest">CONNECTING TO ISLAND...</div>
+      <Activity className="animate-spin text-blue-400" size={24} />
+      <div className="text-[10px] font-mono tracking-widest">LOADING HIGH-RES MAP...</div>
     </div>
   );
 
   const { agents, globalResources, logs } = worldData;
 
-  // --- UI 组件 ---
   const ResourceItem = ({ label, value, color }: any) => (
-    <div className="flex flex-col items-center min-w-[3rem]">
-       <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">{label}</span>
-       <span className={`text-sm font-bold ${color}`}>{value}</span>
+    <div className="flex flex-col items-center min-w-[2.5rem]">
+       <span className="text-[8px] font-bold text-stone-400 uppercase">{label}</span>
+       <span className={`text-xs font-bold ${color}`}>{value}</span>
     </div>
   );
 
   return (
-    <div className="h-screen w-screen bg-[#f3f4f6] overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
+    <div className="h-screen w-screen bg-[#e5e7eb] overflow-hidden flex font-sans text-stone-600 p-2 gap-2">
       
-      {/* --- 左侧：全屏地图 --- */}
-      <div className="flex-[3] relative bg-white rounded-xl overflow-hidden shadow-lg border border-white">
+      {/* 左侧：地图 */}
+      <div className="flex-[3] relative bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
          
-         {/* 顶部资源条 */}
-         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-white/90 backdrop-blur px-6 py-2 rounded-full shadow-xl border border-stone-100 flex gap-6 items-center">
+         {/* 资源条 */}
+         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur px-4 py-1.5 rounded-full shadow-md border border-stone-100 flex gap-4 items-center">
             <ResourceItem label="Wood" value={globalResources.wood} color="text-amber-600" />
-            <div className="w-px h-6 bg-stone-200"></div>
+            <div className="w-px h-4 bg-stone-200"></div>
             <ResourceItem label="Stone" value={globalResources.stone} color="text-stone-500" />
-            <div className="w-px h-6 bg-stone-200"></div>
+            <div className="w-px h-4 bg-stone-200"></div>
             <ResourceItem label="Food" value={globalResources.food} color="text-emerald-600" />
-            <div className="w-px h-6 bg-stone-200"></div>
+            <div className="w-px h-4 bg-stone-200"></div>
             <ResourceItem label="Meds" value={globalResources.medicine} color="text-rose-500" />
          </div>
 
-         {/* 左侧建造栏 */}
+         {/* 建造栏 */}
          <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
             {BUILD_OPTIONS.map(opt => (
-                <button key={opt.type} onClick={() => handleBuild(opt.type)} className="group relative w-10 h-10 bg-white rounded-lg shadow-md border border-stone-200 hover:border-blue-400 hover:scale-110 transition-all flex items-center justify-center text-stone-400 hover:text-blue-500">
-                    <Construction size={18} />
-                    <div className="absolute left-full ml-2 bg-stone-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg">
-                        {opt.name} <span className="text-stone-400">({opt.cost})</span>
+                <button key={opt.type} onClick={() => handleBuild(opt.type)} className="group relative w-8 h-8 bg-white rounded shadow border border-stone-200 hover:border-blue-400 hover:scale-110 transition-all flex items-center justify-center text-stone-400 hover:text-blue-500">
+                    <Construction size={14} />
+                    <div className="absolute left-full ml-2 bg-stone-800 text-white text-[9px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50">
+                        {opt.name}
                     </div>
                 </button>
             ))}
-            <div className="h-px w-6 bg-stone-200 mx-auto my-1"></div>
-            <button onClick={handleReset} className="w-10 h-10 bg-white text-red-400 border border-red-100 rounded-lg shadow hover:bg-red-50 hover:text-red-600 flex items-center justify-center">
-                 <RefreshCw size={16} />
+            <div className="h-px w-4 bg-stone-200 mx-auto"></div>
+            <button onClick={handleReset} className="w-8 h-8 bg-white text-red-400 border border-red-100 rounded shadow hover:bg-red-50 flex items-center justify-center">
+                 <RefreshCw size={14} />
             </button>
          </div>
 
          <GameMap worldData={worldData} />
       </div>
 
-      {/* --- 右侧：信息栏 --- */}
-      <div className="flex-1 flex flex-col min-w-[320px] max-w-[400px] bg-white rounded-xl overflow-hidden shadow-lg border border-white">
-        <div className="h-12 border-b border-stone-100 flex items-center px-4 justify-between bg-stone-50/50">
-            <div className="flex gap-1 bg-stone-100 p-1 rounded-md">
-                <button onClick={() => setSidebarTab('logs')} className={`px-3 py-1 text-[10px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='logs'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Terminal size={12}/> LOGS</button>
-                <button onClick={() => setSidebarTab('team')} className={`px-3 py-1 text-[10px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='team'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Users size={12}/> UNITS</button>
+      {/* 右侧：侧边栏 */}
+      <div className="flex-1 flex flex-col min-w-[280px] max-w-[350px] bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200">
+        <div className="h-10 border-b border-stone-100 flex items-center px-3 justify-between bg-stone-50/50">
+            <div className="flex gap-1 bg-stone-100 p-0.5 rounded">
+                <button onClick={() => setSidebarTab('logs')} className={`px-2 py-0.5 text-[9px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='logs'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Terminal size={10}/> LOGS</button>
+                <button onClick={() => setSidebarTab('team')} className={`px-2 py-0.5 text-[9px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='team'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Users size={10}/> TEAM</button>
             </div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-stone-400">
-               NEXT TICK <span className="text-blue-500 font-bold">{nextRefresh}s</span>
+            <div className="text-[9px] font-mono text-stone-400 flex items-center gap-1">
+               NEXT <span className="text-blue-500 font-bold">{nextRefresh}s</span>
             </div>
         </div>
 
         <div className="flex-1 overflow-y-auto bg-white p-0 relative">
             {sidebarTab === 'logs' && (
-                <div className="p-4 space-y-4">
+                <div className="p-3 space-y-3">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className={`relative pl-4 border-l-2 ${i===0?'border-blue-500':'border-stone-100'} pb-1`}>
-                            <div className="text-[9px] font-mono text-stone-300 mb-1 flex justify-between">
-                                <span>#{String(logs.length - i).padStart(3,'0')}</span>
-                                {i===0 && <span className="text-blue-500 font-bold animate-pulse">NEW</span>}
+                        <div key={i} className={`relative pl-3 border-l-2 ${i===0?'border-blue-500':'border-stone-100'} pb-0.5`}>
+                            <div className="text-[8px] font-mono text-stone-300 mb-0.5 flex justify-between">
+                                <span>SEQ_{String(logs.length - i).padStart(3,'0')}</span>
+                                {i===0 && <span className="text-blue-500 font-bold">NEW</span>}
                             </div>
-                            <p className={`text-xs leading-5 ${i===0?'text-stone-800 font-medium':'text-stone-400'}`}>{log}</p>
+                            <p className={`text-[11px] leading-4 ${i===0?'text-stone-800':'text-stone-400'}`}>{log}</p>
                         </div>
                     ))}
                     <div ref={logsEndRef} />
@@ -158,17 +157,16 @@ export default function Home() {
             )}
             
             {sidebarTab === 'team' && (
-                <div className="p-3 space-y-2">
+                <div className="p-2 space-y-2">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="flex items-center gap-3 p-2 rounded-lg border border-stone-100 hover:border-blue-200 bg-stone-50/30 transition-colors">
+                        <div key={agent.id} className="flex items-center gap-2 p-1.5 rounded border border-stone-100 bg-stone-50/50">
                             <SymbolAvatar name={agent.name} job={agent.job} />
                             <div className="min-w-0 flex-1">
                                 <div className="flex justify-between items-baseline">
-                                    <span className="text-xs font-bold text-stone-700">{agent.name}</span>
-                                    <span className="text-[9px] text-stone-400 uppercase bg-white px-1 rounded border border-stone-100">{agent.job}</span>
+                                    <span className="text-[11px] font-bold text-stone-700">{agent.name}</span>
+                                    <span className="text-[8px] text-stone-400 uppercase">{agent.job}</span>
                                 </div>
-                                <div className="text-[10px] text-stone-400 truncate mt-1 flex items-center gap-1">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${agent.actionLog ? 'bg-emerald-400 animate-pulse' : 'bg-stone-300'}`}></div>
+                                <div className="text-[9px] text-stone-400 truncate">
                                     {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Idle'}
                                 </div>
                             </div>
