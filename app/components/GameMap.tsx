@@ -2,66 +2,27 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, Waves, Mountain, Construction, Anchor, Flower2, Zap } from 'lucide-react';
 
-// --- 1. 配置参数 ---
-const TILE_SIZE = 40; 
-const GRID_COLS = 60; 
-const GRID_ROWS = 40; 
+// --- 1. 核心配置 ---
+const TILE_SIZE = 32; // 格子稍微小一点，让画面更精致
+const GRID_COLS = 50; 
+const GRID_ROWS = 50; 
 
-// --- 2. 视觉样式 (高仿像素游戏材质) ---
-const TERRAIN_STYLES: any = {
-  '深海': { 
-    bg: '#3b82f6', 
-    // CSS模拟像素水波
-    pattern: 'radial-gradient(circle, rgba(255,255,255,0.2) 2px, transparent 2.5px)', 
-    size: '20px 20px',
-    decor: 'wave', decorColor: 'text-blue-100' 
-  },
-  '浅滩': { 
-    bg: '#93c5fd', 
-    pattern: 'radial-gradient(circle, rgba(255,255,255,0.4) 2px, transparent 3px)', 
-    size: '10px 10px',
-    decor: 'wave', decorColor: 'text-white' 
-  },
-  '沙滩': { 
-    bg: '#fde047', 
-    pattern: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0, rgba(0,0,0,0.05) 2px, transparent 0, transparent 10px)', 
-    size: '20px 20px',
-    decor: 'none', decorColor: '' 
-  },
-  '椰林': { 
-    bg: '#86efac', 
-    pattern: 'linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)', 
-    size: '10px 10px',
-    decor: 'tree', decorColor: 'text-green-700' 
-  },
-  '草地': { 
-    bg: '#4ade80', // 鲜亮的草绿
-    // 模拟草地噪点
-    pattern: 'linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05)), linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05))', 
-    size: '20px 20px', 
-    decor: 'grass', decorColor: 'text-green-800' 
-  },
-  '密林': { 
-    bg: '#15803d', 
-    pattern: 'radial-gradient(circle, rgba(0,0,0,0.2) 4px, transparent 5px)', 
-    size: '16px 16px',
-    decor: 'tree', decorColor: 'text-green-950' 
-  },
-  '矿山': { 
-    bg: '#a8a29e', 
-    pattern: 'conic-gradient(#d6d3d1 90deg, transparent 0 270deg, #d6d3d1 0)', 
-    size: '20px 20px',
-    decor: 'rock', decorColor: 'text-stone-600' 
-  },
-  '高塔': { bg: '#e5e5e5', pattern: 'none', size: '0 0', decor: 'none', decorColor: '' },
-  '广场': { 
-    bg: '#f5f5f4', 
-    pattern: 'linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%, #e5e7eb)', 
-    size: '40px 40px',
-    decor: 'none', decorColor: '' 
-  },
+// --- 2. Townscaper 风格配色 (马卡龙色系) ---
+// top: 顶面颜色
+// side: 侧面颜色 (用于 box-shadow 模拟厚度)
+const THEME: any = {
+  '深海': { top: '#60a5fa', side: '#3b82f6', height: 0 },   // 亮蓝
+  '浅滩': { top: '#93c5fd', side: '#60a5fa', height: 0 },   // 浅蓝 (无厚度)
+  '沙滩': { top: '#fde047', side: '#eab308', height: 1 },   // 柠檬黄 (有厚度)
+  '椰林': { top: '#86efac', side: '#4ade80', height: 1 },   // 嫩绿
+  '草地': { top: '#a7f3d0', side: '#6ee7b7', height: 1 },   // 薄荷绿
+  '密林': { top: '#34d399', side: '#10b981', height: 1 },   // 翠绿
+  '矿山': { top: '#d6d3d1', side: '#a8a29e', height: 2 },   // 浅灰 (更高)
+  '高塔': { top: '#e5e7eb', side: '#d1d5db', height: 1 },   
+  '广场': { top: '#f3f4f6', side: '#e5e7eb', height: 1 },   // 纯白
 };
 
+// 伪随机数 (保证地图固定)
 const randomSeed = (seed: number) => {
   const x = Math.sin(seed++) * 10000;
   return x - Math.floor(x);
@@ -69,60 +30,63 @@ const randomSeed = (seed: number) => {
 
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5); 
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [viewState, setViewState] = useState({ scale: 0.5, x: 0, y: 0 });
 
-  // --- Auto-Fit 逻辑 ---
+  // --- Auto-Fit: 完美适配菱形地图 ---
   useEffect(() => {
     const handleResize = () => {
       if (!containerRef.current) return;
       const parentW = containerRef.current.clientWidth;
       const parentH = containerRef.current.clientHeight;
-      
-      // 防止除以0错误
       if (parentW === 0 || parentH === 0) return;
 
-      const mapW = GRID_COLS * TILE_SIZE;
-      const mapH = GRID_ROWS * TILE_SIZE;
-
-      const scaleX = parentW / mapW;
-      const scaleY = parentH / mapH;
-      // 填满容器，留一点点边距
-      const newScale = Math.min(scaleX, scaleY) * 0.98; 
-
-      setScale(newScale);
-      const newX = (parentW - mapW * newScale) / 2;
-      const newY = (parentH - mapH * newScale) / 2;
+      // 轴测投影后的宽度计算比较特殊
+      // 菱形宽度 = GridWidth * TileSize * sqrt(2)
+      // 但我们简单粗暴一点，直接缩放到能装下原来的正方形容器即可
+      const mapRawSize = GRID_COLS * TILE_SIZE; 
       
-      setPosition({ x: newX, y: newY });
+      const scale = Math.min(parentW, parentH) / mapRawSize * 1.6; // 1.6 是经验系数，放大一点填满屏幕
+
+      setViewState({
+        scale: scale,
+        x: (parentW - mapRawSize) / 2, // 居中偏移 X (不缩放时的偏移)
+        y: (parentH - mapRawSize) / 4  // 居中偏移 Y (轴测图会被压扁，所以 Y 要往上提一点)
+      });
     };
 
     window.addEventListener('resize', handleResize);
-    // 延迟执行确保布局已完成
-    setTimeout(handleResize, 100);
+    setTimeout(handleResize, 50); // 延时一帧确保容器已渲染
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  
   if (!worldData) return (
-    <div className="w-full h-full bg-stone-100 flex flex-col items-center justify-center gap-4">
-      <div className="w-12 h-12 border-4 border-stone-300 border-t-green-500 rounded-full animate-spin"></div>
-      <div className="text-stone-500 font-bold text-xs">LOADING MAP ASSETS...</div>
+    <div className="w-full h-full bg-[#a5f3fc] flex items-center justify-center">
+      <div className="animate-bounce text-[#0891b2] font-bold tracking-widest text-sm">LOADING ISLAND...</div>
     </div>
   );
 
   const { agents, buildings } = worldData;
   const mapTypes = ['礁石','浅滩','沉船','椰林','广场','溪流','密林','矿山','高塔'];
 
-  // --- 1. 装饰层 ---
-  const decorations = useMemo(() => {
+  // --- 1. 渲染地形块 (Blocks) ---
+  const blocks = useMemo(() => {
     const items = [];
-    const zoneWidth = GRID_COLS / 3;
-    const zoneHeight = GRID_ROWS / 3;
+    const sectionW = GRID_COLS / 3;
+    const sectionH = GRID_ROWS / 3;
 
-    for (let zx = 0; zx < 3; zx++) {
-      for (let zy = 0; zy < 3; zy++) {
-        const type = mapTypes[zx * 3 + zy];
+    // 为了性能，我们不渲染全部 50x50=2500 个格子
+    // 而是把同类地形合并，或者只在关键位置渲染“岛屿块”
+    // 这里为了视觉效果，我们渲染所有陆地块，忽略深海块（用背景色代替）
+
+    for (let x = 0; x < GRID_COLS; x++) {
+      for (let y = 0; y < GRID_ROWS; y++) {
+        // 计算所属区域
+        const zx = Math.floor(x / sectionW);
+        const zy = Math.floor(y / sectionH);
+        const typeIndex = Math.min(8, zx * 3 + zy);
+        const type = mapTypes[typeIndex];
+
+        // 映射样式
         let styleKey = '草地';
         if (type.includes('密')) styleKey = '密林';
         else if (type.includes('椰') || type.includes('林')) styleKey = '椰林';
@@ -132,133 +96,146 @@ export default function GameMap({ worldData }: { worldData: any }) {
         else if (type.includes('矿')) styleKey = '矿山';
         else if (type.includes('塔')) styleKey = '高塔';
         else if (type.includes('广场')) styleKey = '广场';
+
+        const style = THEME[styleKey];
         
-        const style = TERRAIN_STYLES[styleKey];
-        const density = styleKey === '密林' ? 50 : styleKey === '椰林' ? 25 : styleKey === '矿山' ? 15 : 5;
+        // 优化：只渲染陆地和浅滩，深海直接透明
+        if (styleKey === '深海') continue; 
         
-        for (let i = 0; i < density; i++) {
-          const randX = Math.floor(randomSeed(zx * zy * i + 1) * zoneWidth);
-          const randY = Math.floor(randomSeed(zx * zy * i + 2) * zoneHeight);
-          const gridX = zx * zoneWidth + randX;
-          const gridY = zy * zoneHeight + randY;
+        // 边缘噪点：让地形边缘不那么方正
+        const noise = randomSeed(x * y);
+        if (noise > 0.8 && styleKey === '浅滩') continue; // 随机镂空浅滩
 
-          let Icon = null;
-          let size = 20 + randomSeed(i)*10;
-          let rotate = randomSeed(i*2) * 20 - 10; 
+        // 计算高度投影 (模拟 3D 厚度)
+        const shadowY = style.height * 6; // 6px 厚度
+        const boxShadow = style.height > 0 
+          ? `-${shadowY}px ${shadowY}px 0 ${style.side}` 
+          : 'none';
 
-          if (style.decor.includes('tree')) Icon = Trees;
-          else if (style.decor === 'rock') Icon = Mountain;
-          else if (style.decor === 'wave') Icon = Waves;
-          else if (style.decor === 'grass' && i % 4 === 0) Icon = Zap; 
-          else if (style.decor === 'grass' && i % 5 === 0) Icon = Flower2;
-          if (type.includes('沉') && i === 0) Icon = Anchor;
-
-          if (Icon) {
-            items.push(
-              <div 
-                key={`dec-${gridX}-${gridY}`} 
-                className={`absolute pointer-events-none flex items-end justify-center ${style.decorColor}`} 
-                style={{ 
-                  left: gridX * TILE_SIZE, 
-                  top: gridY * TILE_SIZE,
-                  width: TILE_SIZE, 
-                  height: TILE_SIZE,
-                  opacity: 0.6,
-                  transform: `scale(${0.8 + randomSeed(i)*0.4}) rotate(${rotate}deg)`
-                }}
-              >
-                <Icon size={size} strokeWidth={2.5} className="fill-current" />
-              </div>
-            );
-          }
-        }
+        items.push(
+          <div 
+            key={`${x}-${y}`}
+            className="absolute transition-colors duration-500"
+            style={{
+              width: TILE_SIZE + 1, // +1 防止缝隙
+              height: TILE_SIZE + 1,
+              left: x * TILE_SIZE,
+              top: y * TILE_SIZE,
+              backgroundColor: style.top,
+              boxShadow: boxShadow,
+              zIndex: style.height // 高地形遮挡低地形
+            }}
+          >
+             {/* 装饰物 (随机生成) */}
+             {styleKey.includes('林') && noise > 0.7 && (
+                <div className="absolute bottom-0 right-0 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 scale-150 origin-bottom">
+                  <Trees size={20} className="text-emerald-700/40 fill-current" />
+                </div>
+             )}
+             {styleKey === '矿山' && noise > 0.8 && (
+                <div className="absolute bottom-0 right-0 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 scale-125 origin-bottom">
+                  <Mountain size={18} className="text-stone-600/40 fill-current" />
+                </div>
+             )}
+          </div>
+        );
       }
     }
     return items;
   }, []);
 
-  // --- 2. 建筑 ---
+  // --- 2. 渲染建筑 (立牌) ---
   const renderBuildings = () => {
     return buildings.map((b: any, i: number) => {
-      const zoneW = (GRID_COLS * TILE_SIZE) / 3;
-      const zoneH = (GRID_ROWS * TILE_SIZE) / 3;
-      const centerX = b.x * zoneW + zoneW / 2;
-      const centerY = b.y * zoneH + zoneH / 2;
+      const sectionW = (GRID_COLS * TILE_SIZE) / 3;
+      const sectionH = (GRID_ROWS * TILE_SIZE) / 3;
+      const left = b.x * sectionW + sectionW / 2;
+      const top = b.y * sectionH + sectionH / 2;
 
       let Icon = Construction;
       let colorClass = "text-stone-500 fill-stone-200";
       let size = 64;
 
-      if (b.type === 'House') { Icon = Home; colorClass = "text-orange-600 fill-orange-300"; }
-      if (b.type === 'Warehouse') { Icon = Warehouse; colorClass = "text-indigo-700 fill-indigo-300"; size=72; }
-      if (b.type === 'Clinic') { Icon = Ambulance; colorClass = "text-rose-600 fill-rose-300"; }
-      if (b.type === 'Kitchen') { Icon = Utensils; colorClass = "text-amber-600 fill-amber-300"; }
-      if (b.type === 'Tower') { Icon = Castle; colorClass = "text-stone-700 fill-stone-300"; size=80; }
+      if (b.type === 'House') { Icon = Home; colorClass = "text-orange-500 fill-orange-200"; }
+      if (b.type === 'Warehouse') { Icon = Warehouse; colorClass = "text-indigo-600 fill-indigo-200"; size=72; }
+      if (b.type === 'Clinic') { Icon = Ambulance; colorClass = "text-rose-500 fill-rose-200"; }
+      if (b.type === 'Kitchen') { Icon = Utensils; colorClass = "text-amber-600 fill-amber-200"; }
+      if (b.type === 'Tower') { Icon = Castle; colorClass = "text-stone-600 fill-stone-300"; size=80; }
 
       return (
         <div 
           key={`b-${i}`} 
-          className="absolute flex flex-col items-center justify-center z-10 hover:scale-110 transition-transform duration-300 cursor-pointer group"
-          style={{ left: centerX, top: centerY, transform: 'translate(-50%, -50%)' }}
+          className="absolute z-20 flex flex-col items-center justify-center pointer-events-none"
+          style={{ 
+            left: left, 
+            top: top,
+            // 核心：反向旋转图标，让它立在地图上
+            transform: 'translate(-50%, -50%) rotateZ(-45deg) rotateX(-60deg) scale(1.5)', 
+            transformOrigin: 'bottom center'
+          }}
         >
-          {/* 建筑阴影 */}
-          <div className="absolute top-full w-2/3 h-3 bg-black/20 rounded-full blur-sm -mt-2"></div>
-          
-          <Icon className={`${colorClass} drop-shadow-xl`} size={size} strokeWidth={1.5} />
-          
-          <div className="absolute top-full mt-1 px-2 py-1 bg-white border border-stone-200 shadow-md rounded text-[10px] font-bold text-stone-700 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-            {b.name}
-          </div>
+          <Icon className={`${colorClass} drop-shadow-md`} size={size} strokeWidth={1.5} />
+          {/* 建筑基座阴影 */}
+          <div className="absolute bottom-2 w-10 h-3 bg-black/20 rounded-full blur-[2px]"></div>
         </div>
       );
     });
   };
 
-  // --- 3. 角色 ---
+  // --- 3. 渲染角色 (立牌) ---
   const renderAgents = () => {
     return agents.map((agent: any) => {
-      const zoneW = (GRID_COLS * TILE_SIZE) / 3;
-      const zoneH = (GRID_ROWS * TILE_SIZE) / 3;
-      const baseX = agent.x * zoneW;
-      const baseY = agent.y * zoneH;
-      const spreadX = (randomSeed(agent.id * 111) * 0.6 + 0.2) * zoneW;
-      const spreadY = (randomSeed(agent.id * 222) * 0.6 + 0.2) * zoneH;
-      const finalX = baseX + spreadX;
-      const finalY = baseY + spreadY;
+      const sectionW = (GRID_COLS * TILE_SIZE) / 3;
+      const sectionH = (GRID_ROWS * TILE_SIZE) / 3;
+      
+      const baseX = agent.x * sectionW;
+      const baseY = agent.y * sectionH;
+      // 分散偏移
+      const spreadX = (randomSeed(agent.id * 111) * 0.6 + 0.2) * sectionW;
+      const spreadY = (randomSeed(agent.id * 222) * 0.6 + 0.2) * sectionH;
 
-      const rawText = agent.actionLog || "";
-      const isTalk = rawText.includes('“');
-      let cleanText = rawText.replace(/[“|”|\[|\]]/g, '').trim();
-      if (['Idle', 'Standby', 'Working', 'Resting'].includes(cleanText)) cleanText = '';
-      const shortText = cleanText.length > 8 ? cleanText.substring(0, 8) + '..' : cleanText;
+      const left = baseX + spreadX;
+      const top = baseY + spreadY;
+      
+      const cleanText = agent.actionLog ? agent.actionLog.replace(/[“|”|\[|\]]/g, '').trim() : '';
+      const shortText = cleanText.length > 6 ? cleanText.substring(0, 6) + '..' : cleanText;
+      const isTalk = agent.actionLog?.includes('“');
 
       return (
         <div
           key={agent.id}
-          className="absolute flex flex-col items-center z-20 transition-all duration-[2000ms] ease-in-out"
-          style={{ left: finalX, top: finalY, transform: 'translate(-50%, -50%)' }}
+          className="absolute z-30 transition-all duration-[2000ms] ease-in-out"
+          style={{ 
+            left: left, 
+            top: top,
+            // 反向旋转以直立
+            transform: 'translate(-50%, -50%) rotateZ(-45deg) rotateX(-60deg)',
+            transformOrigin: 'bottom center'
+          }}
         >
-          {shortText && (
-            <div className={`
-              absolute bottom-full mb-1 whitespace-nowrap px-2 py-1 rounded text-[10px] font-bold shadow-md border
-              ${isTalk ? 'bg-white text-stone-900 border-stone-200' : 'bg-stone-800 text-white border-stone-600'}
-              max-w-[120px] overflow-hidden text-ellipsis z-30
-            `}>
-              {shortText}
-            </div>
-          )}
-
-          <div className="relative group cursor-pointer hover:z-50 hover:scale-125 transition-transform duration-200">
-            <div className={`w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px] font-black shrink-0 ${agent.job.includes('建筑') ? 'bg-amber-400' : agent.job.includes('领袖') ? 'bg-blue-500' : 'bg-emerald-500'} text-white`}>
-              {agent.job[0]}
-            </div>
+          {/* 角色整体容器 */}
+          <div className="relative flex flex-col items-center group cursor-pointer hover:scale-125 transition-transform hover:z-50">
             
-            <div className="absolute top-full left-1/2 -translate-x-1/2 w-5 h-1.5 bg-black/30 rounded-full blur-[1px] mt-0.5"></div>
+            {/* 气泡 (仅有话时显示) */}
+            {shortText && (
+               <div className={`
+                 mb-1 px-2 py-0.5 rounded-full text-[8px] font-bold shadow-sm whitespace-nowrap
+                 ${isTalk ? 'bg-white text-stone-800' : 'bg-black/60 text-white'}
+               `}>
+                 {shortText}
+               </div>
+            )}
 
-            <div className="absolute top-full left-1/2 -translate-x-1/2 bg-stone-800 text-white text-[10px] px-2 py-1 rounded mt-2 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-stone-600">
-              <div className="font-bold text-amber-400 mb-0.5">{agent.name}</div>
-              <div className="text-stone-300">{cleanText || "..."}</div>
+            {/* 像素小人 (用 Lucide 图标模拟) */}
+            <div className={`
+              w-6 h-8 rounded-t-full rounded-b-md border-b-4 border-black/20 shadow-sm flex items-center justify-center text-[10px] font-bold text-white
+              ${agent.job.includes('建筑') ? 'bg-amber-400' : agent.job.includes('领袖') ? 'bg-blue-400' : 'bg-emerald-400'}
+            `}>
+               {agent.job[0]}
             </div>
+
+            {/* 脚下阴影 */}
+            <div className="absolute -bottom-1 w-5 h-2 bg-black/30 rounded-full blur-[1px]"></div>
           </div>
         </div>
       );
@@ -266,53 +243,36 @@ export default function GameMap({ worldData }: { worldData: any }) {
   };
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-stone-200 relative overflow-hidden flex items-start justify-start select-none shadow-inner rounded-xl border border-stone-300">
+    // 外层：海洋背景
+    <div ref={containerRef} className="w-full h-full bg-[#60a5fa] relative overflow-hidden flex items-center justify-center">
+      
+      {/* 舞台容器：控制整体缩放和位置 */}
       <div 
-        className="relative transition-transform duration-300 ease-out origin-top-left shadow-2xl bg-white border-4 border-white"
+        className="relative transition-transform duration-500 ease-out"
         style={{
           width: GRID_COLS * TILE_SIZE,
           height: GRID_ROWS * TILE_SIZE,
-          transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+          // 核心魔法：1. 移到计算好的位置 2. 缩放 3. 旋转成轴测视角
+          transform: `
+            translate(${viewState.x}px, ${viewState.y}px) 
+            scale(${viewState.scale}) 
+            rotateX(60deg) rotateZ(45deg)
+          `,
+          transformOrigin: 'center center' // 从中心变换，方便居中
         }}
       >
-        {/* 地形层：使用 CSS 生成纹理 */}
-        <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
-          {Array.from({length: 9}).map((_, i) => {
-             const type = mapTypes[i];
-             let styleKey = '草地';
-             if (type.includes('密')) styleKey = '密林';
-             else if (type.includes('椰') || type.includes('林')) styleKey = '椰林';
-             else if (type.includes('海') || type.includes('沉')) styleKey = '深海';
-             else if (type.includes('滩') || type.includes('溪')) styleKey = '浅滩';
-             else if (type.includes('沙')) styleKey = '沙滩';
-             else if (type.includes('矿')) styleKey = '矿山';
-             else if (type.includes('塔')) styleKey = '高塔';
-             else if (type.includes('广场')) styleKey = '广场';
+        {/* 0. 阴影层 (整个地图在海面上的投影) */}
+        <div className="absolute inset-0 bg-black/10 translate-x-4 translate-y-4 blur-xl rounded-full"></div>
 
-             const style = TERRAIN_STYLES[styleKey];
-             return (
-              <div 
-                key={i} 
-                className="relative"
-                style={{ 
-                  backgroundColor: style.bg,
-                  backgroundImage: style.pattern,
-                  backgroundSize: style.size
-                }} 
-              >
-                {/* 边界线，模拟区块感 */}
-                <div className="absolute inset-0 border border-black/5 opacity-30"></div>
-              </div>
-             );
-          })}
-        </div>
+        {/* 1. 地形层 (积木) */}
+        {blocks}
 
-        {/* 装饰层 */}
-        {decorations}
-        {/* 建筑层 */}
+        {/* 2. 建筑层 (立牌) */}
         {renderBuildings()}
-        {/* 角色层 */}
+
+        {/* 3. 角色层 (立牌) */}
         {renderAgents()}
+
       </div>
     </div>
   );

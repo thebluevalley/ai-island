@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Map as MapIcon } from 'lucide-react';
+import { Hammer, Shield, Stethoscope, Book, Coins, Utensils, Search, Zap, FileText, Users, Construction, RefreshCw, Activity, Terminal } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -8,27 +8,23 @@ type NPC = { id: string; name: string; role: string; currentTask: string; };
 type Resources = { wood: number; stone: number; food: number; medicine: number; };
 
 const BUILD_OPTIONS = [
-  { type: "House", name: "居住屋", cost: "木50" },
-  { type: "Warehouse", name: "大仓库", cost: "木80 石20" },
-  { type: "Clinic", name: "诊所", cost: "木100 石50" },
-  { type: "Kitchen", name: "厨房", cost: "木60 石30" },
-  { type: "Tower", name: "瞭望塔", cost: "木120 石80" }
+  { type: "House", name: "House", cost: "50 Wood" },
+  { type: "Warehouse", name: "Store", cost: "80 Wood" },
+  { type: "Clinic", name: "Clinic", cost: "100 Wood" },
+  { type: "Kitchen", name: "Cook", cost: "60 Wood" },
+  { type: "Tower", name: "Tower", cost: "120 Wood" }
 ];
 
 const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
-    let Icon = Users;
     let color = "bg-stone-400";
-    if (job.includes("消防") || job.includes("保安")) { Icon = Shield; color = "bg-blue-500"; }
-    else if (job.includes("医生") || job.includes("护士")) { Icon = Stethoscope; color = "bg-rose-500"; }
-    else if (job.includes("建筑") || job.includes("工")) { Icon = Hammer; color = "bg-amber-500"; }
-    else if (job.includes("厨")) { Icon = Utensils; color = "bg-orange-500"; }
-    else if (job.includes("学") || job.includes("记录")) { Icon = Book; color = "bg-indigo-500"; }
-    else if (job.includes("商")) { Icon = Coins; color = "bg-emerald-600"; }
-    else if (job.includes("斥候")) { Icon = Search; color = "bg-violet-500"; }
-    else if (job.includes("占卜")) { Icon = Zap; color = "bg-purple-500"; }
+    if (job.includes("建筑")) color = "bg-amber-400";
+    else if (job.includes("医")) color = "bg-rose-400";
+    else if (job.includes("领袖")) color = "bg-blue-400";
+    else color = "bg-emerald-400";
+    
     return (
-      <div title={name} className={`w-8 h-8 ${color} rounded-lg flex items-center justify-center text-white shadow-sm shrink-0`}>
-        <Icon size={16} strokeWidth={2.5} />
+      <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0 border border-white`}>
+        {job[0]}
       </div>
     );
 };
@@ -36,14 +32,13 @@ const SymbolAvatar = ({ name, job }: { name?: string, job: string }) => {
 export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [nextRefresh, setNextRefresh] = useState(45);
   const [sidebarTab, setSidebarTab] = useState<'logs' | 'team'>('logs');
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
-    if (loading || paused) return;
+    if (loading) return;
     setLoading(true);
     try {
       const res = await fetch('/api/tick', { method: 'POST' });
@@ -56,28 +51,24 @@ export default function Home() {
   };
 
   const handleReset = async () => {
-    if (!confirm("⚠️ 确定要重置世界吗？")) return;
+    if (!confirm("Reset Simulation?")) return;
     await fetch('/api/reset', { method: 'POST' });
     window.location.reload();
   };
 
-  const handleBuild = (type: string) => {
-    alert(`指令：建造 ${type}`);
-  };
+  const handleBuild = (type: string) => alert(`Building ${type}...`);
 
   useEffect(() => { fetchData(); }, []);
   
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!paused && !loading) {
-        setNextRefresh(prev => {
-          if (prev <= 1) { fetchData(); return 45; }
-          return prev - 1;
-        });
-      }
+      setNextRefresh(prev => {
+        if (prev <= 1) { fetchData(); return 45; }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
-  }, [paused, loading]);
+  }, [loading]);
 
   useEffect(() => {
     if (sidebarTab === 'logs' && logsEndRef.current) {
@@ -85,123 +76,87 @@ export default function Home() {
     }
   }, [worldData, sidebarTab]);
 
-  if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#f0f2f5] text-stone-500 gap-6">
-      <div className="relative">
-        <div className="w-16 h-16 border-4 border-stone-200 border-t-emerald-500 rounded-full animate-spin"></div>
-        <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
-           <Activity size={24} />
-        </div>
-      </div>
-      <div className="font-mono text-xs tracking-widest text-stone-400 uppercase">System Initializing...</div>
-    </div>
-  );
+  if (!worldData) return <div className="h-screen w-screen flex items-center justify-center bg-stone-50 text-stone-400 text-xs font-mono">BOOTING SYSTEM...</div>;
 
-  const { agents, npcs, globalResources, logs } = worldData;
+  const { agents, globalResources, logs } = worldData;
 
-  // --- 悬浮资源栏 ---
-  const FloatingResources = () => (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-white/90 backdrop-blur text-stone-700 px-5 py-2.5 rounded-full shadow-lg border border-white/50 flex gap-6 items-center">
-       {Object.entries(globalResources).map(([key, val]: any) => (
-         <div key={key} className="flex flex-col items-center gap-0.5 min-w-[2.5rem]">
-            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wide">{key.slice(0,4)}</span>
-            <span className={`text-sm font-bold leading-none ${key==='wood'?'text-amber-600':key==='food'?'text-emerald-600':key==='stone'?'text-stone-500':'text-rose-500'}`}>{val}</span>
-         </div>
-       ))}
-    </div>
-  );
-
-  const FloatingBuildMenu = () => (
-    <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-3">
-        {BUILD_OPTIONS.map(opt => (
-            <button key={opt.type} onClick={() => handleBuild(opt.type)} className="group relative w-12 h-12 bg-white rounded-xl shadow-md border border-stone-200 hover:border-blue-400 hover:scale-110 transition-all flex items-center justify-center text-stone-400 hover:text-blue-500">
-                <Construction size={20} />
-                <div className="absolute left-full ml-3 bg-stone-800 text-white text-xs py-2 px-3 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-                    <div className="font-bold mb-0.5 text-blue-300">{opt.name}</div>
-                    <div className="text-stone-400 text-[10px]">{opt.cost}</div>
-                </div>
-            </button>
-        ))}
-        <div className="h-px w-6 bg-stone-300 mx-auto"></div>
-        <button onClick={handleReset} className="w-12 h-12 bg-white border border-red-200 text-red-400 rounded-xl shadow-md hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors">
-             <RefreshCw size={20} />
-        </button>
+  // --- UI 组件 ---
+  const ResourcePill = ({ label, value, color }: any) => (
+    <div className="flex flex-col items-center">
+       <span className="text-[8px] font-bold text-stone-400 uppercase">{label}</span>
+       <span className={`text-sm font-bold ${color}`}>{value}</span>
     </div>
   );
 
   return (
-    <div className="h-screen w-screen bg-[#e5e7eb] overflow-hidden flex font-sans text-stone-700 p-4 gap-4">
+    <div className="h-screen w-screen bg-stone-100 overflow-hidden flex font-sans text-stone-600 p-3 gap-3">
       
-      {/* --- 左侧：游戏画面 (Flex-1 自适应) --- */}
-      <div className="flex-[3] relative bg-stone-100 rounded-2xl overflow-hidden shadow-xl border border-white">
-         <FloatingResources />
-         <FloatingBuildMenu />
-         <div className="w-full h-full">
-             <GameMap worldData={worldData} />
+      {/* --- 左侧：地图 (全屏自适应) --- */}
+      <div className="flex-[3] relative bg-white rounded-xl overflow-hidden shadow-sm border border-stone-200">
+         
+         {/* 悬浮资源栏 */}
+         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-white/90 backdrop-blur px-6 py-2 rounded-full shadow-lg border border-stone-100 flex gap-6">
+            <ResourcePill label="Wood" value={globalResources.wood} color="text-amber-500" />
+            <div className="w-px h-6 bg-stone-100"></div>
+            <ResourcePill label="Stone" value={globalResources.stone} color="text-stone-500" />
+            <div className="w-px h-6 bg-stone-100"></div>
+            <ResourcePill label="Food" value={globalResources.food} color="text-emerald-500" />
          </div>
+
+         {/* 悬浮建造栏 */}
+         <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
+            {BUILD_OPTIONS.map(opt => (
+                <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-10 h-10 bg-white rounded-lg shadow border border-stone-200 hover:border-blue-400 hover:scale-110 transition-all flex items-center justify-center text-stone-400 hover:text-blue-500">
+                    <Construction size={18} />
+                </button>
+            ))}
+            <div className="h-px w-6 bg-stone-200 mx-auto my-1"></div>
+            <button onClick={handleReset} className="w-10 h-10 bg-white text-red-400 border border-red-100 rounded-lg shadow hover:bg-red-50 flex items-center justify-center">
+                 <RefreshCw size={16} />
+            </button>
+         </div>
+
+         {/* 核心地图 */}
+         <GameMap worldData={worldData} />
       </div>
 
-      {/* --- 右侧：日志 (固定宽) --- */}
-      <div className="flex-1 flex flex-col min-w-[320px] max-w-[420px] bg-white rounded-2xl overflow-hidden shadow-xl border border-white">
-        
-        {/* Header */}
-        <div className="h-14 border-b border-stone-100 flex items-center px-5 justify-between shrink-0 bg-white">
-            <div className="flex gap-2 bg-stone-100 p-1 rounded-lg">
-                <button onClick={() => setSidebarTab('logs')} className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-2 transition-all ${sidebarTab==='logs' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400 hover:text-stone-600'}`}>
-                    <FileText size={14}/> 日志
-                </button>
-                <button onClick={() => setSidebarTab('team')} className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-2 transition-all ${sidebarTab==='team' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400 hover:text-stone-600'}`}>
-                    <Users size={14}/> 成员
-                </button>
+      {/* --- 右侧：侧边栏 --- */}
+      <div className="flex-1 flex flex-col min-w-[300px] max-w-[380px] bg-white rounded-xl overflow-hidden shadow-sm border border-stone-200">
+        <div className="h-12 border-b border-stone-100 flex items-center px-4 justify-between bg-stone-50/50">
+            <div className="flex gap-1 bg-stone-100 p-1 rounded-md">
+                <button onClick={() => setSidebarTab('logs')} className={`px-3 py-1 text-[10px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='logs'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Terminal size={10}/> LOGS</button>
+                <button onClick={() => setSidebarTab('team')} className={`px-3 py-1 text-[10px] font-bold rounded flex gap-1 items-center transition-all ${sidebarTab==='team'?'bg-white shadow text-stone-800':'text-stone-400'}`}><Users size={10}/> TEAM</button>
             </div>
-            
-            <div className="flex items-center gap-2">
-                <div className="text-[10px] font-mono text-stone-400 uppercase">Next Tick</div>
-                <div className="w-10 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 transition-all duration-1000 ease-linear" style={{width: `${((45-nextRefresh)/45)*100}%`}}></div>
-                </div>
+            <div className="w-8 h-8 rounded-full border-2 border-stone-100 flex items-center justify-center text-[10px] font-mono text-stone-400">
+               {nextRefresh}
             </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto bg-[#fafafa] relative">
+        <div className="flex-1 overflow-y-auto bg-white p-4">
             {sidebarTab === 'logs' && (
-                <div className="p-5 space-y-5">
-                    {logs.slice().reverse().map((log: string, i: number) => {
-                        const isLatest = i === 0;
-                        return (
-                            <div key={i} className={`relative pl-4 border-l-2 ${isLatest ? 'border-blue-500' : 'border-stone-200'} pb-1`}>
-                                <div className={`absolute -left-[5px] top-0 w-2 h-2 rounded-full ${isLatest?'bg-blue-500 ring-4 ring-blue-100':'bg-stone-300'}`}></div>
-                                <div className="text-[10px] font-mono text-stone-400 mb-1 flex justify-between">
-                                    <span>#{String(logs.length - i).padStart(3,'0')}</span>
-                                    {isLatest && <span className="text-blue-600 font-bold bg-blue-50 px-1.5 rounded">NEW</span>}
-                                </div>
-                                <p className={`text-sm leading-relaxed ${isLatest ? 'text-stone-800 font-medium' : 'text-stone-500'}`}>
-                                    {log}
-                                </p>
-                            </div>
-                        )
-                    })}
+                <div className="space-y-4">
+                    {logs.slice().reverse().map((log: string, i: number) => (
+                        <div key={i} className={`relative pl-3 border-l-2 ${i===0?'border-blue-400':'border-stone-100'}`}>
+                            <div className="text-[9px] font-mono text-stone-300 mb-1">SEQ_{String(logs.length - i).padStart(3,'0')}</div>
+                            <p className={`text-xs leading-5 ${i===0?'text-stone-700':'text-stone-400'}`}>{log}</p>
+                        </div>
+                    ))}
                     <div ref={logsEndRef} />
                 </div>
             )}
-
+            
             {sidebarTab === 'team' && (
-                <div className="p-4 space-y-3">
+                <div className="space-y-2">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="bg-white p-3 rounded-xl border border-stone-100 shadow-sm flex gap-3 items-center hover:border-blue-200 transition-colors">
+                        <div key={agent.id} className="flex items-center gap-3 p-2 rounded-lg border border-stone-100 hover:border-blue-200 bg-stone-50/30">
                             <SymbolAvatar name={agent.name} job={agent.job} />
-                            <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-baseline mb-1">
-                                    <span className="font-bold text-sm text-stone-700">{agent.name}</span>
-                                    <span className="text-[10px] bg-stone-50 px-1.5 py-0.5 rounded text-stone-400">{agent.job}</span>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex justify-between items-baseline">
+                                    <span className="text-xs font-bold text-stone-700">{agent.name}</span>
+                                    <span className="text-[9px] text-stone-400 uppercase">{agent.job}</span>
                                 </div>
-                                <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden w-full mb-1">
-                                    <div className={`h-full ${agent.hp>50?'bg-emerald-400':'bg-red-400'}`} style={{width: `${agent.hp}%`}}></div>
-                                </div>
-                                <div className="text-[10px] text-stone-400 truncate flex items-center gap-1">
-                                   {agent.actionLog ? <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div> : <div className="w-1.5 h-1.5 rounded-full bg-stone-300"></div>}
-                                   {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : '空闲中'}
+                                <div className="text-[10px] text-stone-400 truncate mt-0.5">
+                                    {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'Idle'}
                                 </div>
                             </div>
                         </div>
