@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Terminal, Users, Construction, RefreshCw, Box } from 'lucide-react';
+import { Play, Pause, Terminal, Users, Construction, Map, Clock } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
 
 const RESOURCES = [
-  { name: 'Wood', value: 850, color: 'text-amber-300' },
-  { name: 'Stone', value: 420, color: 'text-stone-300' },
-  { name: 'Gold', value: 1500, color: 'text-yellow-300' },
+  { name: 'Funds', value: '$12,500', color: 'text-stone-600' },
+  { name: 'Pop', value: '128', color: 'text-stone-600' },
+  { name: 'Happiness', value: '98%', color: 'text-emerald-500' },
 ];
 
 export default function Home() {
@@ -45,80 +45,80 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#2c3e50] text-stone-300 gap-4 font-mono">
-      <div className="w-12 h-12 border-4 border-stone-500 border-t-emerald-400 rounded-full animate-spin"></div>
-      <div className="text-xs tracking-widest uppercase">Generating AI Town...</div>
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#fafafa] text-stone-300 gap-4 font-sans">
+      <div className="w-12 h-12 border-4 border-stone-200 border-t-emerald-300 rounded-full animate-spin"></div>
+      <div className="text-xs tracking-widest text-stone-400 uppercase">Loading Metropolis...</div>
     </div>
   );
 
   const { agents, logs } = worldData;
 
   return (
-    <div className="h-screen w-screen bg-[#1a252f] overflow-hidden flex font-sans text-stone-300">
+    <div className="h-screen w-screen bg-[#f5f5f5] overflow-hidden flex font-sans text-stone-600">
       
-      {/* 左侧：游戏视窗 */}
-      <div className="flex-1 relative flex flex-col min-w-0">
+      {/* 左侧：主视窗 */}
+      <div className="flex-1 relative flex flex-col min-w-0 bg-white m-3 rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
          
-         {/* 顶部 HUD */}
-         <div className="h-14 bg-[#2c3e50] border-b border-black/30 flex items-center justify-between px-6 shadow-md z-10 shrink-0">
+         {/* 顶部 HUD (悬浮式) */}
+         <div className="absolute top-4 left-4 right-4 h-14 bg-white/90 backdrop-blur-md rounded-xl border border-stone-100 flex items-center justify-between px-6 shadow-sm z-10">
              <div className="flex items-center gap-3">
-                 <div className="bg-emerald-500 text-black font-black px-2 py-0.5 rounded text-xs">AI TOWN</div>
-                 <span className="text-xs text-stone-500 font-mono">SIMULATION RUNNING</span>
+                 <div className="bg-stone-800 text-white font-bold px-3 py-1 rounded-lg text-sm flex gap-2 items-center">
+                    <Map size={14}/> AI CITY
+                 </div>
+                 <div className="flex items-center gap-1 text-xs text-stone-400 font-mono border-l border-stone-200 pl-3">
+                    <Clock size={12}/> DAY {Math.floor(tick / 24) + 1}
+                 </div>
              </div>
 
-             <div className="flex gap-6 font-mono text-sm">
+             <div className="flex gap-8 font-medium text-sm">
                  {RESOURCES.map(r => (
-                     <div key={r.name} className="flex gap-2 items-center bg-black/20 px-3 py-1 rounded">
-                         <Box size={12} className={r.color} />
-                         <span className={`font-bold ${r.color}`}>{r.value}</span>
+                     <div key={r.name} className="flex gap-2 items-center">
+                         <span className="text-stone-400 text-xs uppercase font-bold">{r.name}</span>
+                         <span className={`${r.color}`}>{r.value}</span>
                      </div>
                  ))}
              </div>
 
              <div className="flex gap-2">
-                 <button className="p-2 bg-white/5 hover:bg-white/10 rounded text-stone-300"><Play size={16} fill="currentColor" /></button>
-                 <button className="p-2 bg-white/5 hover:bg-white/10 rounded text-stone-500"><Pause size={16} fill="currentColor" /></button>
+                 <button className="p-2 hover:bg-stone-100 rounded-lg text-stone-400"><Play size={18} fill="currentColor" /></button>
+                 <button className="p-2 hover:bg-stone-100 rounded-lg text-stone-400"><Pause size={18} fill="currentColor" /></button>
              </div>
          </div>
 
          {/* 核心地图 */}
-         <div className="flex-1 relative bg-black">
+         <div className="flex-1 relative bg-[#fcfcfc]">
              <GameMap worldData={worldData} />
-             
-             {/* 左下角信息 */}
-             <div className="absolute bottom-4 left-4 text-[10px] font-mono text-stone-500 select-none">
-                 DAY {Math.floor(tick / 24) + 1} | {tick % 24}:00
-             </div>
          </div>
       </div>
 
       {/* 右侧：信息面板 */}
-      <div className="w-[320px] bg-[#2c3e50] border-l border-black/30 flex flex-col shadow-2xl z-20">
+      <div className="w-[340px] bg-white border-l border-stone-100 flex flex-col z-20 my-3 mr-3 rounded-2xl shadow-sm overflow-hidden">
         
         {/* Tab Header */}
-        <div className="flex border-b border-black/20">
+        <div className="flex border-b border-stone-100 p-2 gap-2">
             <button 
                 onClick={() => setSidebarTab('logs')}
-                className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${sidebarTab==='logs'?'bg-[#34495e] text-emerald-400 border-b-2 border-emerald-500':'text-stone-500 hover:text-stone-300'}`}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sidebarTab==='logs'?'bg-stone-100 text-stone-800':'text-stone-400 hover:bg-stone-50'}`}
             >
-                <Terminal size={14} /> Events
+                <Terminal size={14} /> EVENTS
             </button>
             <button 
                 onClick={() => setSidebarTab('team')}
-                className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${sidebarTab==='team'?'bg-[#34495e] text-blue-400 border-b-2 border-blue-500':'text-stone-500 hover:text-stone-300'}`}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sidebarTab==='team'?'bg-stone-100 text-stone-800':'text-stone-400 hover:bg-stone-50'}`}
             >
-                <Users size={14} /> Residents
+                <Users size={14} /> CITIZENS
             </button>
         </div>
 
         {/* 内容 */}
-        <div className="flex-1 overflow-y-auto p-0 font-mono text-xs custom-scrollbar bg-[#233040]">
+        <div className="flex-1 overflow-y-auto p-0 font-mono text-xs">
             {sidebarTab === 'logs' && (
                 <div className="p-4 space-y-3">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className={`p-2.5 rounded border-l-2 ${i===0?'bg-emerald-900/10 border-emerald-500 text-emerald-200':'border-stone-600 text-stone-400'}`}>
-                            <div className="flex justify-between mb-1 opacity-50 text-[9px]">
-                                <span>SEQ #{String(logs.length - i).padStart(3,'0')}</span>
+                        <div key={i} className={`p-3 rounded-xl border ${i===0?'bg-emerald-50/50 border-emerald-100 text-emerald-800':'border-stone-100 text-stone-500'}`}>
+                            <div className="flex justify-between mb-1 opacity-40 text-[10px]">
+                                <span>SEQ #{String(logs.length - i).padStart(4,'0')}</span>
+                                {i===0 && <span>LIVE</span>}
                             </div>
                             <p className="leading-relaxed">{log}</p>
                         </div>
@@ -128,19 +128,19 @@ export default function Home() {
             )}
             
             {sidebarTab === 'team' && (
-                <div className="p-2 space-y-2">
+                <div className="p-3 space-y-2">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="bg-[#2c3e50] p-2 rounded flex items-center gap-3 border border-stone-700 hover:border-stone-500 transition-colors cursor-pointer">
-                            <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center text-white font-bold shadow-sm ${agent.job.includes('建筑') ? 'bg-[#f39c12]' : agent.job.includes('领袖') ? 'bg-[#3498db]' : 'bg-[#e74c3c]'}`}>
+                        <div key={agent.id} className="bg-white p-3 rounded-xl flex items-center gap-3 border border-stone-100 hover:border-stone-300 transition-colors cursor-pointer shadow-sm">
+                            <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white font-bold shadow-sm ${agent.job.includes('建筑') ? 'bg-[#ffcc80]' : agent.job.includes('领袖') ? 'bg-[#90caf9]' : 'bg-[#a5d6a7]'}`}>
                                 {agent.name[0]}
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between">
-                                    <span className="font-bold text-stone-200">{agent.name}</span>
-                                    <span className="text-[9px] text-stone-500 bg-black/20 px-1.5 py-0.5 rounded">{agent.job}</span>
+                                    <span className="font-bold text-stone-700">{agent.name}</span>
+                                    <span className="text-[9px] bg-stone-100 px-2 py-0.5 rounded-full text-stone-400">{agent.job}</span>
                                 </div>
                                 <div className="text-[10px] text-stone-400 truncate mt-1">
-                                    {agent.actionLog ? `> ${agent.actionLog.replace(/[“|”]/g,'')}` : '> Idle'}
+                                    {agent.actionLog ? `> ${agent.actionLog.replace(/[“|”]/g,'')}` : '> Resting...'}
                                 </div>
                             </div>
                         </div>
