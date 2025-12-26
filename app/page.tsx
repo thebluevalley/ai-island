@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Terminal, Cpu, Radio, Hash } from 'lucide-react';
+import { Terminal, Cpu, Radio, Map } from 'lucide-react';
 import GameMap from './components/GameMap';
 
 type Agent = { id: number; name: string; job: string; hp: number; hunger: number; actionLog: string; locationName?: string; x: number; y: number };
@@ -9,7 +9,7 @@ export default function Home() {
   const [worldData, setWorldData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
-  const [sidebarTab, setSidebarTab] = useState<'LOG' | 'MEM'>('LOG');
+  const [sidebarTab, setSidebarTab] = useState<'LOG' | 'ENT'>('LOG');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
@@ -39,80 +39,72 @@ export default function Home() {
   }, [worldData, sidebarTab]);
 
   if (!worldData) return (
-    <div className="h-screen w-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center">
-      <div className="animate-pulse">SYSTEM_BOOT_SEQUENCE...</div>
-      <div className="mt-2">[||||||||||        ] 50%</div>
+    <div className="h-screen w-screen bg-[#000] text-[#0f0] font-mono flex flex-col items-center justify-center">
+      <div className="animate-pulse tracking-widest">INITIALIZING_ASCII_RENDERER...</div>
     </div>
   );
 
   const { agents, logs } = worldData;
 
   return (
-    <div className="h-screen w-screen bg-[#000000] text-[#00ff00] font-mono flex overflow-hidden p-2 gap-2">
+    <div className="h-screen w-screen bg-[#0a0a0a] text-[#cccccc] font-mono flex overflow-hidden p-1 gap-1">
       
-      {/* 左侧：主屏幕 */}
-      <div className="flex-[3] border border-[#333] flex flex-col relative">
+      {/* 左侧：主地图 */}
+      <div className="flex-[4] border border-[#333] flex flex-col relative bg-[#111]">
          
          {/* 顶部状态栏 */}
-         <div className="h-8 border-b border-[#333] flex items-center justify-between px-2 text-xs bg-[#111]">
+         <div className="h-6 border-b border-[#333] flex items-center justify-between px-2 text-[10px] bg-[#1a1a1a]">
              <div className="flex gap-4">
-                 <span className="flex items-center gap-1"><Terminal size={12}/> TTY_01</span>
-                 <span className="flex items-center gap-1"><Cpu size={12}/> MEM: 64K</span>
+                 <span className="flex items-center gap-1 text-[#00e676]"><Terminal size={10}/> SYS: ONLINE</span>
+                 <span className="flex items-center gap-1"><Map size={10}/> MAP: 100x50</span>
              </div>
              <div className="flex gap-4">
-                 <span>SIM_TICK: {tick}</span>
-                 <span><span className="animate-pulse">●</span> ONLINE</span>
+                 <span>TICK: {tick}</span>
+                 <span className="text-[#42a5f5]">POP: {agents.length}</span>
              </div>
          </div>
 
-         {/* 纯文本地图区 */}
-         <div className="flex-1 relative overflow-hidden bg-black">
+         {/* 核心地图区 */}
+         <div className="flex-1 relative overflow-hidden flex items-center justify-center">
              <GameMap worldData={worldData} />
-             
-             {/* 装饰性 CRT 扫描线 */}
-             <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-50 bg-[length:100%_2px,3px_100%]"></div>
          </div>
       </div>
 
-      {/* 右侧：数据流 */}
-      <div className="flex-1 border border-[#333] flex flex-col min-w-[300px]">
+      {/* 右侧：数据面板 */}
+      <div className="flex-1 min-w-[280px] border border-[#333] flex flex-col bg-[#0f0f0f]">
         
         {/* Tab */}
-        <div className="flex border-b border-[#333] text-xs">
-            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-2 hover:bg-[#111] ${sidebarTab==='LOG'?'bg-[#222] text-white':''}`}>
-                [F1] SYSTEM_LOG
+        <div className="flex border-b border-[#333] text-[10px]">
+            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-1.5 hover:bg-[#222] ${sidebarTab==='LOG'?'bg-[#222] text-[#fff]':'text-[#666]'}`}>
+                [1] LOGS
             </button>
-            <button onClick={() => setSidebarTab('MEM')} className={`flex-1 py-2 hover:bg-[#111] ${sidebarTab==='MEM'?'bg-[#222] text-white':''}`}>
-                [F2] ENTITY_LIST
+            <button onClick={() => setSidebarTab('ENT')} className={`flex-1 py-1.5 hover:bg-[#222] ${sidebarTab==='ENT'?'bg-[#222] text-[#fff]':'text-[#666]'}`}>
+                [2] ENTITIES
             </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 text-xs font-mono custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-2 text-[10px] leading-relaxed custom-scrollbar">
             {sidebarTab === 'LOG' && (
                 <div className="space-y-1">
                     {logs.slice().reverse().map((log: string, i: number) => (
-                        <div key={i} className="break-words">
-                            <span className="text-[#555] mr-2">
-                                {String(logs.length - i).padStart(4,'0')}:
-                            </span>
-                            <span className="text-[#00ff00]">{log}</span>
+                        <div key={i} className="break-words border-l-2 border-[#333] pl-2 hover:border-[#555]">
+                            <span className="text-[#444] mr-2">[{String(logs.length - i).padStart(3,'0')}]</span>
+                            <span className="text-[#aaa]">{log}</span>
                         </div>
                     ))}
                     <div ref={logsEndRef} />
                 </div>
             )}
             
-            {sidebarTab === 'MEM' && (
-                <div className="space-y-2">
+            {sidebarTab === 'ENT' && (
+                <div className="space-y-1">
                     {agents.map((agent: Agent) => (
-                        <div key={agent.id} className="border border-[#333] p-1.5 hover:bg-[#111] cursor-pointer">
-                            <div className="flex justify-between text-[#ffff00]">
-                                <span>ID_{agent.id.toString(16).toUpperCase()} : {agent.name}</span>
-                                <span>[{agent.job}]</span>
+                        <div key={agent.id} className="border border-[#222] p-1.5 hover:bg-[#1a1a1a] cursor-pointer flex justify-between items-center group">
+                            <div>
+                                <span className="text-[#00e676] font-bold block">{agent.name}</span>
+                                <span className="text-[#555] group-hover:text-[#777]">&gt; {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'').substring(0,20)+'...' : 'IDLE'}</span>
                             </div>
-                            <div className="text-[#555] truncate mt-1">
-                                &gt; {agent.actionLog ? agent.actionLog.replace(/[“|”]/g,'') : 'IDLE_STATE'}
-                            </div>
+                            <span className="text-[#333] text-[9px]">{agent.job.substring(0,1)}</span>
                         </div>
                     ))}
                 </div>
