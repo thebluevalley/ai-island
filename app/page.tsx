@@ -92,7 +92,8 @@ export default function Home() {
              </div>
              
              <div className="flex gap-2 pointer-events-auto">
-                 {BUILDINGS.map((opt:any) => (
+                 {/* 修正点：这里原来写成了 BUILDINGS.map，现改为正确的 BUILD_OPTIONS.map */}
+                 {BUILD_OPTIONS.map((opt:any) => (
                     <button key={opt.type} onClick={() => handleBuild(opt.type)} className="w-9 h-9 bg-white rounded-lg shadow-md border border-stone-200 flex items-center justify-center text-stone-400 hover:text-blue-500 hover:scale-110 transition-all">
                         <Construction size={16} />
                     </button>
