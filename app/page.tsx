@@ -40,7 +40,7 @@ export default function Home() {
 
   if (!worldData) return (
     <div className="h-screen w-screen bg-[#23242a] text-[#8abeb7] font-mono flex flex-col items-center justify-center">
-      <div className="animate-pulse tracking-widest">LOADING...</div>
+      <div className="animate-pulse tracking-widest">CONNECTING TO SIMULATION...</div>
     </div>
   );
 
@@ -49,8 +49,9 @@ export default function Home() {
   return (
     <div className="h-screen w-screen bg-[#1e1f24] text-[#c5c8c6] font-mono flex overflow-hidden p-1 gap-1">
       
-      {/* 主地图 */}
+      {/* Left: Main Map */}
       <div className="flex-[4] border border-[#2b2d35] flex flex-col relative bg-[#23242a]">
+         
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> ASCII_TOWN</span>
@@ -58,24 +59,31 @@ export default function Home() {
              </div>
              <div className="text-[#5c6370]">TICK: {tick}</div>
          </div>
+
          <div className="flex-1 relative overflow-hidden flex items-center justify-center">
              <GameMap worldData={worldData} />
          </div>
       </div>
 
-      {/* 侧边栏 */}
+      {/* Right: Sidebar */}
       <div className="flex-1 min-w-[280px] border border-[#2b2d35] flex flex-col bg-[#23242a]">
+        
         <div className="flex border-b border-[#2b2d35] text-[10px]">
-            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-1.5 hover:bg-[#2b2d35] ${sidebarTab==='LOG'?'bg-[#2b2d35] text-[#fff]':'text-[#5c6370]'}`}>LOGS</button>
-            <button onClick={() => setSidebarTab('INFO')} className={`flex-1 py-1.5 hover:bg-[#2b2d35] ${sidebarTab==='INFO'?'bg-[#2b2d35] text-[#fff]':'text-[#5c6370]'}`}>INFO</button>
+            <button onClick={() => setSidebarTab('LOG')} className={`flex-1 py-1.5 hover:bg-[#2b2d35] ${sidebarTab==='LOG'?'bg-[#2b2d35] text-[#fff]':'text-[#5c6370]'}`}>
+                LOGS
+            </button>
+            <button onClick={() => setSidebarTab('INFO')} className={`flex-1 py-1.5 hover:bg-[#2b2d35] ${sidebarTab==='INFO'?'bg-[#2b2d35] text-[#fff]':'text-[#5c6370]'}`}>
+                INFO
+            </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 text-xs font-mono leading-relaxed custom-scrollbar">
             {sidebarTab === 'LOG' && (
                 <div className="space-y-2">
-                    {logs.slice().reverse().map((log: string, i: number) => (
+                    {/* Safe access to logs with default empty array */}
+                    {(logs || []).slice().reverse().map((log: string, i: number) => (
                         <div key={i} className="break-words border-l border-[#4a505c] pl-2">
-                            <span className="text-[#5c6370] mr-2">[{String(logs.length - i).padStart(3,'0')}]</span>
+                            <span className="text-[#5c6370] mr-2">[{String((logs || []).length - i).padStart(3,'0')}]</span>
                             <span className="text-[#c5c8c6]">{log}</span>
                         </div>
                     ))}
@@ -85,20 +93,35 @@ export default function Home() {
             
             {sidebarTab === 'INFO' && (
                 <div className="space-y-4">
+                    {/* Visual Legend */}
                     <div className="border border-[#2b2d35] p-2">
                         <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">LEGEND</div>
                         <div className="grid grid-cols-2 gap-y-2 text-[10px]">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>Home</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#8abeb7] text-[#8abeb7] flex items-center justify-center">#</div><span>Shop</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div><span>Civic</span></div>
-                            <div className="flex items-center gap-2"><span className="text-[#68856c]">♣</span><span>Tree</span></div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div>
+                                <span>Residential</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 border border-[#8abeb7] text-[#8abeb7] flex items-center justify-center">#</div>
+                                <span>Commercial</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div>
+                                <span>Civic</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[#68856c]">♣</span>
+                                <span>Forest</span>
+                            </div>
                         </div>
                     </div>
+
+                    {/* Agent List */}
                     <div>
-                        <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">AGENTS ({agents.length})</div>
+                        <div className="text-[#5c6370] mb-2 border-b border-[#2b2d35] pb-1">CITIZENS ({agents.length})</div>
                         <div className="space-y-1">
                             {agents.map((agent: Agent) => (
-                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff]">
+                                <div key={agent.id} className="flex justify-between items-center text-[#969896] hover:text-[#fff] cursor-default">
                                     <span>{agent.name}</span>
                                     <span className="text-[#5c6370] text-[9px]">{agent.job}</span>
                                 </div>
