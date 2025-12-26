@@ -127,10 +127,12 @@ export default function GameMap({ worldData }: { worldData: any }) {
     const roadY = [10, 25, 40];
     const roadW = 2;
 
-    // 绘制路
+    // 绘制路 (修复处)
     roadY.forEach(y => {
-        for(let x=0; x<COLS; x++) setCell(x, y, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true);
-        setCell(x, y+1, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true); // 双车道
+        for(let x=0; x<COLS; x++) {
+            setCell(x, y, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true);
+            setCell(x, y+1, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_ROAD, true); // 双车道
+        }
     });
     roadX.forEach(x => {
         for(let y=0; y<ROWS; y++) {
