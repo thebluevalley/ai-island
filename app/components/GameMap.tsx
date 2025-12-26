@@ -1,71 +1,46 @@
 'use client';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
-// --- 1. Seeded Random (Fixes Hydration Mismatch) ---
-// A simple deterministic random number generator
-let _seed = 12345;
-const resetSeed = () => { _seed = 12345; };
-const random = () => {
-    const x = Math.sin(_seed++) * 10000;
-    return x - Math.floor(x);
-};
-
-// --- 2. Charset (Geometric) ---
+// --- 1. 字符集 (增加次级道路) ---
 const CHARS: any = {
-  EMPTY: ' ',
-  GRASS: '·', 
-  TREE:  '♣', 
-  WATER: '≈', 
+  EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
   
-  // Roads
-  ROAD_H: '═', ROAD_V: '║', ROAD_C: '╬',
+  // 主干道 (双线/粗线)
+  ROAD_MAIN_H: '═', ROAD_MAIN_V: '║', ROAD_MAIN_C: '╬',
   
-  // Architecture
-  WALL: '#', 
-  DOOR: '+', 
-  FLOOR: '.',
+  // 次干道 (单线/细线)
+  ROAD_SUB_H:  '─', ROAD_SUB_V:  '│', ROAD_SUB_C:  '┼',
+  
+  // 建筑
+  WALL: '#', DOOR: '+', FLOOR: '.',
 };
 
-// --- 3. Morandi / Elegant Dark Palette ---
+// --- 2. 莫兰迪/淡雅配色 ---
 const COLORS: any = {
-  // Background: Deep Blue-Grey (Eye-friendly)
   BG:        '#23242a', 
+  BG_GRASS:  '#2b2d35', FG_GRASS: '#4a505c', 
+  FG_FOREST: '#68856c', FG_WATER: '#6a9fb5', 
+  
+  // 道路区分
+  FG_ROAD_MAIN: '#8c92a3', // 亮灰
+  FG_ROAD_SUB:  '#4b5263', // 暗灰 (低对比)
 
-  // Environment (Low Saturation)
-  BG_GRASS:  '#2b2d35', 
-  FG_GRASS:  '#4a505c', 
-  FG_FOREST: '#68856c', // Muted Green
-  FG_WATER:  '#6a9fb5', // Muted Blue
-  FG_ROAD:   '#5c6370', 
-
-  // Building Types (Pastel Tones)
-  
-  // 1. Residential: Warm Sand / Clay
-  FG_RES_WALL: '#d4b595', 
-  FG_RES_DOOR: '#cc8c6c', 
-  
-  // 2. Commercial: Sage / Teal
-  FG_COM_WALL: '#8abeb7', 
-  FG_COM_DOOR: '#5e8d87',
-  
-  // 3. Civic: Dusty Purple / Gold
-  FG_CIV_WALL: '#b294bb', 
-  FG_CIV_DOOR: '#817299',
-  
-  // Interiors
-  BG_BLDG:   '#1e1f24', 
+  // 建筑 (粉彩)
+  FG_RES_WALL: '#d4b595', FG_RES_DOOR: '#cc8c6c', 
+  FG_COM_WALL: '#8abeb7', FG_COM_DOOR: '#5e8d87',
+  FG_CIV_WALL: '#b294bb', FG_CIV_DOOR: '#817299',
+  BG_BLDG:     '#1e1f24', 
 };
 
-const COLS = 100;
-const ROWS = 50;
+const COLS = 120;
+const ROWS = 70; // 高度增加，容纳更多街区
 
-// Custom Landmarks (Size & Type)
+// 公共建筑定义
 const CIVIC_BUILDINGS = [
-    { type: 'CIV', w: 16, h: 10, label: 'HALL' }, // City Hall
-    { type: 'CIV', w: 14, h: 8,  label: 'LIB'  }, // Library
-    { type: 'COM', w: 12, h: 6,  label: 'MKT'  }, // Market
-    { type: 'CIV', w: 10, h: 6,  label: 'HOSP' }, // Clinic
-    { type: 'COM', w: 8,  h: 6,  label: 'CAFE' }, // Cafe
+    { type: 'CIV', w: 16, h: 10, label: 'HALL' }, // Hall
+    { type: 'CIV', w: 14, h: 8,  label: 'LIB'  }, // Lib
+    { type: 'COM', w: 12, h: 8,  label: 'MKT'  }, // Market
+    { type: 'CIV', w: 12, h: 8,  label: 'HOSP' }, // Hosp
 ];
 
 export default function GameMap({ worldData }: { worldData: any }) {
@@ -75,10 +50,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
 
   const { agents } = worldData || { agents: [] };
 
-  // --- Map Generation Logic ---
   const mapData = useMemo(() => {
-    resetSeed(); // Reset seed every render to ensure consistency
-
     const grid = new Array(COLS * ROWS).fill(null).map(() => ({ 
         char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS 
     }));
@@ -101,87 +73,92 @@ export default function GameMap({ worldData }: { worldData: any }) {
         if (type === 'COM') { wallColor = COLORS.FG_COM_WALL; doorColor = COLORS.FG_COM_DOOR; }
         if (type === 'CIV') { wallColor = COLORS.FG_CIV_WALL; doorColor = COLORS.FG_CIV_DOOR; }
 
-        // Walls
         for(let ix=x; ix<x+w; ix++) { setCell(ix, y, CHARS.WALL, wallColor, COLORS.BG_BLDG); setCell(ix, y+h-1, CHARS.WALL, wallColor, COLORS.BG_BLDG); }
         for(let iy=y; iy<y+h; iy++) { setCell(x, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG); setCell(x+w-1, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG); }
-        // Floor
         fillRect(x+1, y+1, w-2, h-2, CHARS.FLOOR, '#333', COLORS.BG_BLDG);
-        // Door
         setCell(x+Math.floor(w/2), y+h-1, CHARS.DOOR, doorColor, COLORS.BG_BLDG);
     };
 
-    // === Layout Algorithm ===
+    // === 布局算法 ===
     
-    // 1. Spacious Grid (Block size 24x16)
-    const blockW = 24; 
-    const blockH = 16;
-    
-    // Draw Roads
-    for(let x=0; x<COLS; x+=blockW) fillRect(x, 0, 1, ROWS, CHARS.ROAD_V, COLORS.FG_ROAD, COLORS.BG_GRASS);
-    for(let y=0; y<ROWS; y+=blockH) fillRect(0, y, COLS, 1, CHARS.ROAD_H, COLORS.FG_ROAD, COLORS.BG_GRASS);
-    for(let x=0; x<COLS; x+=blockW) for(let y=0; y<ROWS; y+=blockH) setCell(x, y, CHARS.ROAD_C, COLORS.FG_ROAD, COLORS.BG_GRASS);
+    // 1. 生成主干路网 (Main Grid) -> 划分出 Superblocks
+    const mainBlockW = 36; // 大街区宽
+    const mainBlockH = 22; // 大街区高
+    const mainRoadW = 2;   // 主路宽
 
-    // 2. Pre-defined Civic Spots (Golden Locations)
-    const civicLocs = [
-        {bx: 2, by: 1}, // Center
-        {bx: 1, by: 1}, // Left
-        {bx: 3, by: 1}, // Right
-        {bx: 2, by: 2}, // Bottom
-        {bx: 1, by: 2}  // Bottom-Left
-    ];
-    let civicIdx = 0;
+    // 绘制主路
+    for(let x=0; x<COLS; x+=mainBlockW) fillRect(x, 0, mainRoadW, ROWS, CHARS.ROAD_MAIN_V, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
+    for(let y=0; y<ROWS; y+=mainBlockH) fillRect(0, y, COLS, mainRoadW, CHARS.ROAD_MAIN_H, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
+    // 交叉口
+    for(let x=0; x<COLS; x+=mainBlockW) for(let y=0; y<ROWS; y+=mainBlockH) fillRect(x, y, mainRoadW, mainRoadW, CHARS.ROAD_MAIN_C, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS);
 
-    // 3. Iterate Blocks
-    for (let by=0; by<Math.floor(ROWS/blockH); by++) {
-        for (let bx=0; bx<Math.floor(COLS/blockW); bx++) {
-            const x = bx * blockW + 2;
-            const y = by * blockH + 2;
-            const w = blockW - 3;
-            const h = blockH - 3;
+    let civicCount = 0;
 
-            const isCivicSpot = civicLocs.some(loc => loc.bx === bx && loc.by === by);
+    // 2. 遍历每个 Superblock
+    for (let by=0; by<Math.floor(ROWS/mainBlockH); by++) {
+        for (let bx=0; bx<Math.floor(COLS/mainBlockW); bx++) {
+            
+            const sx = bx * mainBlockW + mainRoadW;
+            const sy = by * mainBlockH + mainRoadW;
+            const sw = mainBlockW - mainRoadW;
+            const sh = mainBlockH - mainRoadW;
 
-            // A. Place Unique Civic Buildings
-            if (isCivicSpot && civicIdx < CIVIC_BUILDINGS.length) {
-                const bldg = CIVIC_BUILDINGS[civicIdx++];
-                // Center it
-                const cx = x + Math.floor((w - bldg.w)/2);
-                const cy = y + Math.floor((h - bldg.h)/2);
+            // 中心公园 (固定在左上角的大街区)
+            if (bx === 1 && by === 1) {
+                for(let i=0; i<150; i++) setCell(sx+Math.random()*sw, sy+Math.random()*sh, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                fillRect(sx+4, sy+4, sw-8, sh-8, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
+                continue;
+            }
+
+            // 公共建筑 (少量，放在显眼位置)
+            if ((bx+by)%3 === 0 && civicCount < CIVIC_BUILDINGS.length) {
+                const bldg = CIVIC_BUILDINGS[civicCount++];
+                // 居中放置一个大建筑
+                const cx = sx + Math.floor((sw-bldg.w)/2);
+                const cy = sy + Math.floor((sh-bldg.h)/2);
                 drawBuilding(cx, cy, bldg.w, bldg.h, bldg.type as any);
                 
-                // Surround with Park
-                for(let i=0; i<15; i++) {
-                    const tx = x + Math.floor(random()*w);
-                    const ty = y + Math.floor(random()*h);
-                    if (tx < cx || tx >= cx+bldg.w || ty < cy || ty >= cy+bldg.h) {
-                        setCell(tx, ty, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                    }
+                // 广场铺地
+                for(let i=0; i<30; i++) {
+                    const tx = sx + Math.random()*sw;
+                    const ty = sy + Math.random()*sh;
+                    if(tx<cx||tx>cx+bldg.w||ty<cy||ty>cy+bldg.h) setCell(Math.floor(tx), Math.floor(ty), CHARS.FLOOR, '#444', COLORS.BG_GRASS);
                 }
-            } 
-            // B. Central Forest Park (Top Center)
-            else if (bx === 2 && by === 0) {
-                 for(let i=0; i<60; i++) {
-                     setCell(x+Math.floor(random()*w), y+Math.floor(random()*h), CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                 }
-                 // Lake
-                 fillRect(x+6, y+4, w-12, h-8, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
+                continue;
             }
-            // C. Residential (Sparse & Organic)
-            else {
-                // 60% chance to have houses (creates negative space)
-                if (random() > 0.4) {
-                    const houseW = 6, houseH = 5;
-                    // Main House
-                    drawBuilding(x + 2, y + 2, houseW, houseH, 'RES');
-                    
-                    // Maybe a neighbor?
-                    if (random() > 0.5) {
-                        drawBuilding(x + w - houseW - 2, y + h - houseH - 2, houseW, houseH, 'RES');
-                    }
 
-                    // Garden Trees
-                    setCell(x+w-2, y+2, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                    setCell(x+2, y+h-2, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+            // === 居住区细分 (Subdivide Residential) ===
+            // 在 Superblock 内部划分为 3x2 或 3x3 的小格子
+            const subRows = 2; 
+            const subCols = 3;
+            const cellW = Math.floor(sw / subCols);
+            const cellH = Math.floor(sh / subRows);
+
+            // 绘制次干道 (内部路网)
+            for(let i=1; i<subCols; i++) fillRect(sx+i*cellW, sy, 1, sh, CHARS.ROAD_SUB_V, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+            for(let j=1; j<subRows; j++) fillRect(sx, sy+j*cellH, sw, 1, CHARS.ROAD_SUB_H, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+            for(let i=1; i<subCols; i++) for(let j=1; j<subRows; j++) setCell(sx+i*cellW, sy+j*cellH, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS);
+
+            // 填充每个小格子 (6-10 Houses per Block)
+            for(let r=0; r<subRows; r++) {
+                for(let c=0; c<subCols; c++) {
+                    const hx = sx + c*cellW + 1;
+                    const hy = sy + r*cellH + 1;
+                    const hw = cellW - 2;
+                    const hh = cellH - 2;
+
+                    // 100% 填充率，不再留空
+                    // 房子尺寸固定为 6x5
+                    const bW = 6, bH = 5;
+                    // 在小格子里居中
+                    const bx = hx + Math.floor((hw-bW)/2);
+                    const by = hy + Math.floor((hh-bH)/2);
+                    
+                    if (bx+bW < sx+sw && by+bH < sy+sh) {
+                        drawBuilding(bx, by, bW, bH, 'RES');
+                        // 种树 (院子)
+                        if(Math.random()>0.5) setCell(bx-1, by+1, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    }
                 }
             }
         }
@@ -196,7 +173,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    // Auto-fit Font Size
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
             const { width, height } = entry.contentRect;
@@ -222,37 +198,27 @@ export default function GameMap({ worldData }: { worldData: any }) {
         canvas.style.width = `${COLS * charW}px`;
         canvas.style.height = `${ROWS * charH}px`;
 
-        // Clear Background
         ctx.fillStyle = COLORS.BG;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
         ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
         ctx.textBaseline = 'top';
 
-        // 1. Draw Map
+        // Draw Map
         mapData.forEach((cell, idx) => {
             const x = (idx % COLS) * charW;
             const y = Math.floor(idx / COLS) * charH;
-            
-            if (cell.bg) {
-                ctx.fillStyle = cell.bg;
-                // +0.5 to fix sub-pixel gaps
-                ctx.fillRect(x, y, charW+0.5, charH+0.5);
-            }
-            if (cell.char !== ' ') {
-                ctx.fillStyle = cell.fg;
-                ctx.fillText(cell.char, x, y);
-            }
+            if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(x, y, charW+0.5, charH+0.5); }
+            if (cell.char !== ' ') { ctx.fillStyle = cell.fg; ctx.fillText(cell.char, x, y); }
         });
 
-        // 2. Draw Agents (High Contrast White)
+        // Draw Agents
         agents.forEach((agent: any) => {
             const tx = Math.floor((agent.x / 100) * COLS);
             const ty = Math.floor((agent.y / 100) * ROWS);
             if(tx>=0 && tx<COLS && ty>=0 && ty<ROWS) {
                 const x = tx * charW;
                 const y = ty * charH;
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#fff';
                 ctx.fillText('@', x, y);
             }
         });
