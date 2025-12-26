@@ -1,23 +1,24 @@
 'use client';
-import React, { useMemo, useState } from 'react';
-import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, Waves, Mountain, Construction, ZoomIn, ZoomOut } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { Home, Warehouse, Ambulance, Utensils, Castle, Trees, Waves, Mountain, Construction } from 'lucide-react';
 
-// --- 视觉配置 (浅色清新版) ---
+// --- 视觉配置 ---
 const TILE_SIZE = 40; 
+// 保持高精度网格，但我们会自动缩放它以适应屏幕
 const GRID_COLS = 60; 
 const GRID_ROWS = 40; 
 
-// 区域颜色映射 (高亮清新版)
+// 区域颜色映射
 const ZONE_STYLES: any = {
-  '深海': { bg: '#60a5fa', decor: 'wave' }, // 亮蓝
-  '浅滩': { bg: '#bae6fd', decor: 'wave' }, // 浅蓝
-  '沙滩': { bg: '#fef08a', decor: 'none' }, // 柠檬黄
-  '椰林': { bg: '#bbf7d0', decor: 'tree' }, // 嫩绿
-  '草地': { bg: '#86efac', decor: 'grass' }, // 亮绿
-  '密林': { bg: '#22c55e', decor: 'tree_dense' }, // 鲜绿
-  '矿山': { bg: '#a8a29e', decor: 'rock' }, // 浅灰
-  '高塔': { bg: '#e7e5e4', decor: 'none' }, // 亮灰
-  '广场': { bg: '#f5f5f4', decor: 'pave' }, // 纯白
+  '深海': { bg: '#60a5fa', decor: 'wave' },
+  '浅滩': { bg: '#bae6fd', decor: 'wave' },
+  '沙滩': { bg: '#fef08a', decor: 'none' },
+  '椰林': { bg: '#bbf7d0', decor: 'tree' },
+  '草地': { bg: '#86efac', decor: 'grass' },
+  '密林': { bg: '#22c55e', decor: 'tree_dense' },
+  '矿山': { bg: '#a8a29e', decor: 'rock' },
+  '高塔': { bg: '#e7e5e4', decor: 'none' },
+  '广场': { bg: '#f5f5f4', decor: 'pave' },
 };
 
 const BUILDINGS: any = {
@@ -34,7 +35,49 @@ const randomSeed = (seed: number) => {
 };
 
 export default function GameMap({ worldData }: { worldData: any }) {
-  const [scale, setScale] = useState(0.8); // 默认稍微缩小一点以便看全貌
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  // --- Auto-Fit 逻辑: 自动计算缩放比例以填满容器 ---
+  useEffect(() => {
+    const handleResize = () => {
+      if (!containerRef.current) return;
+      
+      const parentWidth = containerRef.current.clientWidth;
+      const parentHeight = containerRef.current.clientHeight;
+      const mapWidth = GRID_COLS * TILE_SIZE;
+      const mapHeight = GRID_ROWS * TILE_SIZE;
+
+      // 计算宽和高的缩放比例，取较小值以保证完全显示
+      // 乘以 0.95 留一点点边距，看起来不那么局促
+      const scaleX = parentWidth / mapWidth;
+      const scaleY = parentHeight / mapHeight;
+      const newScale = Math.min(scaleX, scaleY) * 0.95; 
+
+      setScale(newScale);
+
+      // 计算居中偏移量
+      const newX = (parentWidth - mapWidth * newScale) / 2;
+      const newY = (parentHeight - mapHeight * newScale) / 2;
+      
+      setPosition({ x: newX, y: newY });
+    };
+
+    // 初始化和窗口大小改变时触发
+    window.addEventListener('resize', handleResize);
+    handleResize(); // 立即执行一次
+
+    // 创建一个 ResizeObserver 监听容器本身的大小变化 (更精准)
+    const observer = new ResizeObserver(handleResize);
+    if (containerRef.current) observer.observe(containerRef.current);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      observer.disconnect();
+    };
+  }, []);
+
   
   if (!worldData) return <div className="w-full h-full bg-stone-50 flex items-center justify-center text-stone-400 font-mono animate-pulse">CONNECTING SATELLITE...</div>;
   const { agents, buildings } = worldData;
@@ -106,14 +149,11 @@ export default function GameMap({ worldData }: { worldData: any }) {
       const zoneH = (GRID_ROWS * TILE_SIZE) / 3;
       const baseX = agent.x * zoneW;
       const baseY = agent.y * zoneH;
-
-      // 分散算法
       const spreadX = (randomSeed(agent.id * 111) * 0.6 + 0.2) * zoneW;
       const spreadY = (randomSeed(agent.id * 222) * 0.6 + 0.2) * zoneH;
       const finalX = baseX + spreadX;
       const finalY = baseY + spreadY;
 
-      // 极简气泡：只显示前8个字，防止遮挡
       const rawText = agent.actionLog || "";
       const isTalk = rawText.includes('“');
       let cleanText = rawText.replace(/[“|”|\[|\]]/g, '').trim();
@@ -123,7 +163,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
       return (
         <div
           key={agent.id}
-          className="absolute flex flex-col items-center z-20 transition-all duration-[2000ms] ease-in-out" // 移动速度放慢
+          className="absolute flex flex-col items-center z-20 transition-all duration-[2000ms] ease-in-out"
           style={{ left: finalX, top: finalY, transform: 'translate(-50%, -50%)' }}
         >
           {shortText && (
@@ -140,7 +180,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
             <div className={`w-8 h-8 rounded-full border-2 border-white shadow-md flex items-center justify-center text-[10px] font-bold shrink-0 ${agent.job.includes('建筑') ? 'bg-amber-400' : agent.job.includes('领袖') ? 'bg-blue-500' : 'bg-emerald-500'} text-white`}>
               {agent.job[0]}
             </div>
-            {/* 悬停显示详情 */}
             <div className="absolute top-full left-1/2 -translate-x-1/2 bg-stone-900 text-white text-[10px] px-2 py-1 rounded mt-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
               <div className="font-bold mb-0.5">{agent.name}</div>
               <div className="text-stone-300">{cleanText || "Thinking..."}</div>
@@ -152,38 +191,33 @@ export default function GameMap({ worldData }: { worldData: any }) {
   };
 
   return (
-    <div className="w-full h-full bg-stone-100 relative overflow-hidden flex flex-col rounded-r-2xl shadow-inner">
-      {/* 缩放控制器 */}
-      <div className="absolute bottom-6 right-6 z-50 flex gap-2">
-        <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="bg-white p-2 rounded-full shadow-lg border border-stone-100 hover:bg-stone-50 text-stone-600 transition-all hover:scale-110"><ZoomIn size={20}/></button>
-        <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="bg-white p-2 rounded-full shadow-lg border border-stone-100 hover:bg-stone-50 text-stone-600 transition-all hover:scale-110"><ZoomOut size={20}/></button>
-      </div>
-
-      <div className="flex-1 overflow-auto cursor-grab active:cursor-grabbing p-10 bg-[#f0f2f5] flex items-center justify-center">
-        <div 
-          className="relative shadow-2xl bg-white transition-transform duration-500 origin-center rounded-2xl overflow-hidden border-[8px] border-white"
-          style={{
-            width: GRID_COLS * TILE_SIZE,
-            height: GRID_ROWS * TILE_SIZE,
-            transform: `scale(${scale})`,
-            backgroundImage: `
-              linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px)
-            `,
-            backgroundSize: `${TILE_SIZE}px ${TILE_SIZE}px`
-          }}
-        >
-          {/* 地形底色 */}
-          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-            {Array.from({length: 9}).map((_, i) => (
-              <div key={i} style={{ backgroundColor: ZONE_STYLES[mapTypes[i]]?.bg || '#f5f5f4' }} />
-            ))}
-          </div>
-
-          {decorations}
-          {renderBuildings()}
-          {renderAgents()}
+    // 外层容器：ref 用于计算大小，overflow-hidden 禁止滚动
+    <div ref={containerRef} className="w-full h-full bg-stone-100 relative overflow-hidden flex items-start justify-start rounded-2xl shadow-inner select-none">
+      
+      {/* 这里的 transform-origin: top left 是配合我们计算好的 x,y 偏移量使用的 */}
+      <div 
+        className="relative shadow-2xl bg-white transition-transform duration-300 ease-out rounded-xl overflow-hidden border-[8px] border-white"
+        style={{
+          width: GRID_COLS * TILE_SIZE,
+          height: GRID_ROWS * TILE_SIZE,
+          transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+          transformOrigin: 'top left', // 关键：从左上角开始缩放和偏移
+          backgroundImage: `
+            linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: `${TILE_SIZE}px ${TILE_SIZE}px`
+        }}
+      >
+        <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+          {Array.from({length: 9}).map((_, i) => (
+            <div key={i} style={{ backgroundColor: ZONE_STYLES[mapTypes[i]]?.bg || '#f5f5f4' }} />
+          ))}
         </div>
+
+        {decorations}
+        {renderBuildings()}
+        {renderAgents()}
       </div>
     </div>
   );
