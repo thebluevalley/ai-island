@@ -14,9 +14,8 @@ const DEFAULT_DATA = {
     ],
     logs: [
         "System initialized.",
-        "Zoning Update: 5x2 Custom Grid.",
-        "Civic Center & Park zones designated.",
-        "Residential Density: 8-12 units/block.",
+        "Performance Mode: Double Layer Canvas.",
+        "Grid: 4x2 Optimized Layout.",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
 };
@@ -71,8 +70,8 @@ export default function Home() {
       <div className="flex-[5] border border-[#2b2d35] flex flex-col relative bg-[#23242a]">
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
-                 <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> AI_TOWN_SIM</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 5x2 CUSTOM ZONING (10 BLOCKS)</span>
+                 <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> PERFORMANCE</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> 4x2 SMOOTH</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
