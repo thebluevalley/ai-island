@@ -7,16 +7,16 @@ type Agent = { id: number; name: string; job: string; hp: number; hunger: number
 
 const DEFAULT_DATA = {
     agents: [
-        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Walking through the formal boulevard..." },
-        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Ensuring all 12 houses are built..." },
-        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Patrolling the garden district..." },
-        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Heading to the clinic..." },
+        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Walking along the smart path..." },
+        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Enjoying the refined garden..." },
+        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Patrolling the secure block..." },
+        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Heading to patient's home..." },
     ],
     logs: [
         "System initialized.",
-        "Priority Update: Housing quantity strictly enforced.",
-        "Landscape: Symmetrical Green Boulevard planted.",
-        "Gardens: Auto-filling empty residential spaces.",
+        "Fix: Internal roads no longer overlap houses.",
+        "Landscape: Refined greenery & Smart pathfinding.",
+        "Density: Tri-mode strict enforcement.",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
 };
@@ -72,7 +72,7 @@ export default function Home() {
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> AI_TOWN_SIM</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> FORCE_LAYOUT (12/10/7)</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> REFINED GARDENS & SMART PATHS</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
@@ -111,7 +111,7 @@ export default function Home() {
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>House</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#5c6370] border border-[#5c6370] flex items-center justify-center"></div><span>Main Rd</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div><span>Civic</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#e06c75] text-[#fff] flex items-center justify-center">@</div><span>Agent</span></div>
+                            <div className="flex items-center gap-2"><span className="text-[#565c64]">·</span><span>Garden</span></div>
                         </div>
                     </div>
                     <div>
