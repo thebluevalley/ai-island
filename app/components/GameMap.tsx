@@ -23,13 +23,13 @@ const COLORS: any = {
   FG_AGENT: '#ffffff', BG_AGENT: '#e06c75'
 };
 
-// === 布局：4x2 网格 (性能更佳) ===
-const MARGIN_X = 10;
-const MARGIN_Y = 6;
+// 5x2 网格 + 宽边距
+const MARGIN_X = 14; 
+const MARGIN_Y = 8;
 const BLOCK_W = 46; 
 const BLOCK_H = 42; 
-const GRID_COLS = 4; // 4列
-const GRID_ROWS = 2; // 2行
+const GRID_COLS = 5; 
+const GRID_ROWS = 2; 
 
 const MAP_COLS = BLOCK_W * GRID_COLS + MARGIN_X * 2; 
 const MAP_ROWS = BLOCK_H * GRID_ROWS + MARGIN_Y * 2; 
@@ -44,36 +44,27 @@ const random = (x: number, y: number) => {
     return sin - Math.floor(sin);
 };
 
-// Optimized Pathfinding (Limit depth)
+// Pathfinding
 const findPath = (startX: number, startY: number, endX: number, endY: number, grid: any[]) => {
     const queue = [{x: startX, y: startY, path: [] as any[]}];
     const visited = new Set();
     visited.add(`${startX},${startY}`);
     let iterations = 0;
-    
-    // 降低搜索深度以防止卡顿
-    const MAX_DEPTH = 1500; 
-
-    while(queue.length > 0 && iterations < MAX_DEPTH) {
+    while(queue.length > 0 && iterations < 2000) {
         iterations++;
         const curr = queue.shift();
         if(!curr) break;
         if (Math.abs(curr.x - endX) < 2 && Math.abs(curr.y - endY) < 2) return curr.path;
-        
-        // 启发式排序：优先探索靠近目标的方向 (简单的 A* 思想)
         const dirs = [[0,1], [0,-1], [1,0], [-1,0]].sort((a,b) => {
-            const distA = Math.abs((curr.x+a[0]) - endX) + Math.abs((curr.y+a[1]) - endY);
-            const distB = Math.abs((curr.x+b[0]) - endX) + Math.abs((curr.y+b[1]) - endY);
-            return distA - distB;
+             return (Math.abs((curr.x+a[0])-endX) + Math.abs((curr.y+a[1])-endY)) - 
+                    (Math.abs((curr.x+b[0])-endX) + Math.abs((curr.y+b[1])-endY));
         });
-
         for (let d of dirs) {
             const nx = curr.x + d[0];
             const ny = curr.y + d[1];
             const key = `${nx},${ny}`;
             if (nx >= 0 && nx < MAP_COLS && ny >= 0 && ny < MAP_ROWS && !visited.has(key)) {
                 const cell = grid[ny * MAP_COLS + nx];
-                // 允许走：路、小径、门、草地(作为捷径)
                 const isWalkable = cell.isRoad || cell.char === CHARS.PATH || cell.char === CHARS.DOOR || cell.char === CHARS.GRASS;
                 if (isWalkable && !cell.isBldg) {
                     visited.add(key);
@@ -87,24 +78,19 @@ const findPath = (startX: number, startY: number, endX: number, endY: number, gr
 
 export default function GameMap({ worldData }: { worldData: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  // 双层 Canvas refs
-  const bgCanvasRef = useRef<HTMLCanvasElement>(null); // 静态层
-  const fgCanvasRef = useRef<HTMLCanvasElement>(null); // 动态层 (Agents)
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null); 
+  const fgCanvasRef = useRef<HTMLCanvasElement>(null); 
   
   const [fontSize, setFontSize] = useState(8);
-  const { agents } = worldData || { agents: [] };
-
-  // 使用 useRef 存储 Agents 状态，避免 React 渲染循环导致的卡顿
   const agentsRef = useRef<any[]>([]);
   const frameIdRef = useRef<number>(0);
 
-  // --- Map Generation (Heavy Calculation: Only Once) ---
+  const { agents } = worldData || { agents: [] };
+
   const { grid, poiList } = useMemo(() => {
     const grid = new Array(MAP_COLS * MAP_ROWS).fill(0).map(() => ({ 
         char: CHARS.GRASS, fg: COLORS.FG_GRASS, bg: COLORS.BG_GRASS, isRoad: false, isBldg: false
     }));
-    
     const buildingsRegistry: any[] = [];
 
     const setCell = (x: number, y: number, char: string, fg: string, bg?: string, isRoad=false, isBldg=false) => {
@@ -126,8 +112,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         const safeSet = (x: number, y: number) => {
             if(x>=0 && x<MAP_COLS && y>=0 && y<MAP_ROWS) {
                 const idx = y*MAP_COLS+x;
-                if(!grid[idx].isRoad && !grid[idx].isBldg) 
-                    setCell(x, y, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS);
+                if(!grid[idx].isRoad && !grid[idx].isBldg) setCell(x, y, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS);
             }
         };
         while(currX !== x2) { currX += (x2 > currX ? 1 : -1); safeSet(currX, currY); }
@@ -139,7 +124,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const idx = iy*MAP_COLS+ix;
             if(ix>=MAP_COLS || iy>=MAP_ROWS || grid[idx]?.isBldg || grid[idx]?.isRoad) return null; 
         }
-
         let wallColor = COLORS.FG_RES_WALL;
         let doorColor = COLORS.FG_RES_DOOR;
         if (type === 'COM') { wallColor = COLORS.FG_COM_WALL; doorColor = COLORS.FG_COM_DOOR; }
@@ -158,17 +142,13 @@ export default function GameMap({ worldData }: { worldData: any }) {
         else if (facing === 'RIGHT') { doorX = x + w - 1; doorY = y + Math.floor(h/2); }
 
         setCell(doorX, doorY, CHARS.DOOR, doorColor, COLORS.BG_BLDG, false, true);
-        
-        const building = { type, x, y, w, h, doorX, doorY, id: buildingsRegistry.length };
-        buildingsRegistry.push(building);
-
+        buildingsRegistry.push({ type, x, y, w, h, doorX, doorY, id: buildingsRegistry.length });
         if (type === 'CAFE') setCell(x+Math.floor(w/2), y+Math.floor(h/2), CHARS.CAFE_SIGN, COLORS.FG_CAFE, COLORS.BG_BLDG, false, true);
         if (type === 'CIV') setCell(x+Math.floor(w/2), y+Math.floor(h/2), CHARS.LIB_SIGN, COLORS.FG_CIV_WALL, COLORS.BG_BLDG, false, true);
-
         return { doorX, doorY }; 
     };
 
-    // === Layout: 4x2 Grid ===
+    // === 1. Draw Infrastructure ===
     const startX = MARGIN_X;
     const startY = MARGIN_Y;
 
@@ -182,7 +162,35 @@ export default function GameMap({ worldData }: { worldData: any }) {
         fillRect(startX, y, MAP_COLS - MARGIN_X*2, MAIN_ROAD_W, CHARS.ROAD_MAIN, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
 
-    // Blocks
+    // === 2. Boulevard Green Belt (Adding trees along the main horizontal avenue) ===
+    // Main avenue is between row 0 and row 1.
+    // Row 0 blocks bottom edge: y = startY + BLOCK_H - MAIN_ROAD_W
+    // Row 1 blocks top edge: y = startY + BLOCK_H
+    
+    // Top side of Avenue (Bottom of Row 0)
+    const avenueY = startY + BLOCK_H;
+    
+    for (let bx=0; bx<GRID_COLS; bx++) {
+        const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
+        const sw = BLOCK_W - MAIN_ROAD_W;
+        
+        // Tree Line Above Avenue
+        for(let ix=sx; ix<sx+sw; ix++) {
+            if(random(ix, avenueY-MAIN_ROAD_W-2) > 0.1) 
+                setCell(ix, avenueY - MAIN_ROAD_W - 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+            if(random(ix, avenueY-MAIN_ROAD_W-3) > 0.3) 
+                setCell(ix, avenueY - MAIN_ROAD_W - 3, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+        }
+        // Tree Line Below Avenue
+        for(let ix=sx; ix<sx+sw; ix++) {
+            if(random(ix, avenueY+2) > 0.1) 
+                setCell(ix, avenueY + 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+            if(random(ix, avenueY+3) > 0.3) 
+                setCell(ix, avenueY + 3, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+        }
+    }
+
+    // === 3. Block Filling ===
     for (let by=0; by<GRID_ROWS; by++) {
         for (let bx=0; bx<GRID_COLS; bx++) {
             const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
@@ -192,36 +200,49 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const centerX = sx + Math.floor(sw/2);
             const centerY = sy + Math.floor(sh/2);
 
-            // Block 1 (1,0): Civic Center (4 buildings)
-            if (bx === 1 && by === 0) {
-                // Plaza
-                for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) if(random(ix, iy)>0.5) setCell(ix, iy, CHARS.FLOOR, '#333', COLORS.BG_GRASS);
-                const quads = [{x:sx, y:sy}, {x:sx+sw/2, y:sy}, {x:sx, y:sy+sh/2}, {x:sx+sw/2, y:sy+sh/2}];
+            // Block (2,0): Civic Center (4 buildings)
+            if (bx === 2 && by === 0) {
+                // Adjust layout to account for green belt at bottom
+                const effectiveH = sh - 4; // leave room for trees
+                for(let iy=sy; iy<sy+effectiveH; iy++) for(let ix=sx; ix<sx+sw; ix++) 
+                    if(random(ix, iy)>0.6) setCell(ix, iy, CHARS.FLOOR, '#333', COLORS.BG_GRASS);
+                const quads = [{x:sx, y:sy}, {x:sx+sw/2, y:sy}, {x:sx, y:sy+effectiveH/2}, {x:sx+sw/2, y:sy+effectiveH/2}];
                 for(let i=0; i<4; i++) {
                     const q = quads[i];
-                    const res = drawBuilding(q.x + 6, q.y + 6, 12, 10, 'CIV');
-                    if(res) { drawPath(res.doorX, res.doorY+1, res.doorX, res.doorY+3); drawPath(res.doorX, res.doorY+3, centerX, centerY); }
+                    const res = drawBuilding(q.x + 4, q.y + 4, 12, 10, 'CIV');
+                    if(res) { drawPath(res.doorX, res.doorY+1, res.doorX, res.doorY+2); drawPath(res.doorX, res.doorY+2, centerX, centerY); }
                 }
-                drawPath(centerX, centerY, centerX, sy+sh);
+                drawPath(centerX, centerY, centerX, sy+sh); // path through green belt
                 continue;
             }
 
-            // Block 2 (2,0): Mixed Park/Civic
-            if (bx === 2 && by === 0) {
-                // Left Park
-                for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw/2; ix++) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                fillRect(sx+4, sy+6, sw/2-8, sh-12, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
-                // Right Civic
-                const b1 = drawBuilding(sx + sw/2 + 4, sy + 4, 12, 10, 'CIV');
-                if(b1) drawPath(b1.doorX, b1.doorY+1, b1.doorX, centerY);
-                const b2 = drawBuilding(sx + sw/2 + 4, sy + sh/2 + 4, 12, 10, 'CIV');
-                if(b2) drawPath(b2.doorX, b2.doorY+1, b2.doorX, centerY);
-                drawPath(centerX, centerY, centerX, sy+sh);
+            // Block (2,1): Park + Civic (Reoriented)
+            // Top Half: Park (Facing Main Avenue)
+            // Bottom Half: Civic Buildings
+            if (bx === 2 && by === 1) {
+                const parkH = Math.floor(sh/2);
+                
+                // Top Half: Park (Avoid the green belt we just drew at sy+2)
+                for(let iy=sy+4; iy<sy+parkH; iy++) for(let ix=sx; ix<sx+sw; ix++) {
+                    setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                }
+                fillRect(sx+6, sy+6, sw-12, parkH-10, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
+
+                // Bottom Half: 2 Civic Buildings
+                const bY = sy + parkH + 2;
+                // Left Bldg
+                const b1 = drawBuilding(sx + 4, bY, 12, 10, 'CIV');
+                if(b1) drawPath(b1.doorX, b1.doorY+1, b1.doorX, sy+sh);
+                // Right Bldg
+                const b2 = drawBuilding(sx + sw - 16, bY, 12, 10, 'CIV');
+                if(b2) drawPath(b2.doorX, b2.doorY+1, b2.doorX, sy+sh);
+                
+                // Path from Avenue into Park
+                drawPath(centerX, sy, centerX, sy+parkH);
                 continue;
             }
 
-            // Residential (Remaining 6 blocks)
-            // Internal Road
+            // Residential
             const midX = Math.floor(sx + sw/2);
             const midY = Math.floor(sy + sh/2);
             fillRect(sx, midY, sw, SUB_ROAD_W, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
@@ -231,20 +252,30 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const isDense = random(bx, by) > 0.6;
             const slots: {x: number, y: number, f: string, cy?: number, cx?: number}[] = [];
 
-            if (isDense) { // 12 Houses
-                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: sy+2, f: 'UP', cy: sy });
-                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: sy+sh-HOUSE_H-2, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+2, y: sy+HOUSE_H+3, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+2, y: sy+sh-HOUSE_H*2-4, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+HOUSE_H+3, f: 'RIGHT', cx: sx+sw });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H*2-4, f: 'RIGHT', cx: sx+sw });
-            } else { // 8 Houses
-                slots.push({ x: sx+2, y: sy+2, f: 'UP', cy: sy }); 
-                slots.push({ x: sx+sw/2-HOUSE_W/2, y: sy+2, f: 'UP', cy: sy }); 
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+2, f: 'UP', cy: sy }); 
-                slots.push({ x: sx+2, y: sy+sh-HOUSE_H-2, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+sw/2-HOUSE_W/2, y: sy+sh-HOUSE_H-2, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H-2, f: 'DOWN', cy: sy+sh });
+            // Adjust y-offsets to account for green belts if adjacent to avenue
+            let topY = sy + 2;
+            let bottomY = sy + sh - HOUSE_H - 2;
+            if (by === 0) bottomY -= 4; // Row 0 has trees at bottom
+            if (by === 1) topY += 4;    // Row 1 has trees at top
+
+            if (isDense) {
+                // 12 Houses
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: topY, f: 'UP', cy: sy });
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+2, y: sy+HOUSE_H+6, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+2, y: sy+sh-HOUSE_H*2-6, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+HOUSE_H+6, f: 'RIGHT', cx: sx+sw });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H*2-6, f: 'RIGHT', cx: sx+sw });
+            } else {
+                // 8 Houses
+                slots.push({ x: sx+2, y: topY, f: 'UP', cy: sy }); 
+                slots.push({ x: sx+sw/2-HOUSE_W/2, y: topY, f: 'UP', cy: sy }); 
+                slots.push({ x: sx+sw-HOUSE_W-2, y: topY, f: 'UP', cy: sy }); 
+                
+                slots.push({ x: sx+2, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+sw/2-HOUSE_W/2, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: bottomY, f: 'DOWN', cy: sy+sh });
+
                 slots.push({ x: sx+2, y: midY-HOUSE_H/2, f: 'LEFT', cx: sx });
                 slots.push({ x: sx+sw-HOUSE_W-2, y: midY-HOUSE_H/2, f: 'RIGHT', cx: sx+sw });
             }
@@ -262,80 +293,27 @@ export default function GameMap({ worldData }: { worldData: any }) {
     return { grid, poiList: buildingsRegistry };
   }, []);
 
-  // --- Initial Setup Agents ---
+  // --- Agents ---
   useEffect(() => {
     if (agents.length > 0 && poiList.length > 0) {
         const homes = poiList.filter(b => b.type === 'RES');
         const shops = poiList.filter(b => b.type !== 'RES');
-        
         agentsRef.current = agents.map((agent: any, idx: number) => {
             const home = homes[idx % homes.length] || homes[0];
             const target = (Math.random() > 0.5 && shops.length > 0) ? shops[Math.floor(Math.random()*shops.length)] : home;
             return {
-                ...agent,
-                x: home.doorX, y: home.doorY,
-                targetX: target.doorX, targetY: target.doorY,
-                path: [], lastUpdate: Date.now()
+                ...agent, x: home.doorX, y: home.doorY, targetX: target.doorX, targetY: target.doorY, path: [], lastUpdate: Date.now()
             };
         });
     }
   }, [agents, poiList]);
 
-  // --- Resize Handler ---
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const resizeObserver = new ResizeObserver(entries => {
-        for (let entry of entries) {
-            const { width, height } = entry.contentRect;
-            const charW = width / MAP_COLS;
-            const charH = height / MAP_ROWS;
-            const size = Math.floor(Math.min(charW / 0.6, charH));
-            setFontSize(Math.max(4, size));
-        }
-    });
-    resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  // --- Draw Static Layer (Only Once) ---
-  useEffect(() => {
-    const canvas = bgCanvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    
-    // Set logical size
-    canvas.width = MAP_COLS * fontSize * 0.6 * dpr;
-    canvas.height = MAP_ROWS * fontSize * dpr;
-    
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-        ctx.scale(dpr, dpr);
-        ctx.fillStyle = COLORS.BG;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
-        ctx.textBaseline = 'top';
-        
-        const cellW = (canvas.width/dpr) / MAP_COLS;
-        const cellH = (canvas.height/dpr) / MAP_ROWS;
-
-        // Draw entire grid once
-        grid.forEach((cell: any, idx: number) => {
-            const x = (idx % MAP_COLS) * cellW;
-            const y = Math.floor(idx / MAP_COLS) * cellH;
-            if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(x, y, cellW+0.5, cellH+0.5); }
-            if (cell.char !== ' ') { ctx.fillStyle = cell.fg; ctx.fillText(cell.char, x, y + cellH*0.15); }
-        });
-    }
-  }, [fontSize, grid]);
-
-  // --- Animation Loop (Dynamic Layer) ---
+  // --- Animation ---
   useEffect(() => {
     const canvas = fgCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const dpr = window.devicePixelRatio || 1;
     canvas.width = MAP_COLS * fontSize * 0.6 * dpr;
     canvas.height = MAP_ROWS * fontSize * dpr;
@@ -343,63 +321,62 @@ export default function GameMap({ worldData }: { worldData: any }) {
     const cellH = (canvas.height/dpr) / MAP_ROWS;
 
     const render = () => {
-        // Clear previous frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(dpr, dpr); // Reset scale for this frame
-        
-        // Update Logic (Throttle movement to avoid excessive pathfinding)
+        ctx.scale(dpr, dpr);
         const now = Date.now();
         
         agentsRef.current.forEach(agent => {
-            if (now - agent.lastUpdate > 100) { // Move every 100ms
+            if (now - agent.lastUpdate > 100) { 
                 agent.lastUpdate = now;
-                
-                // Arrived?
                 if (Math.abs(agent.x - agent.targetX) < 1 && Math.abs(agent.y - agent.targetY) < 1) {
                     const dests = poiList;
-                    if(dests.length > 0) {
-                        const next = dests[Math.floor(Math.random() * dests.length)];
-                        agent.targetX = next.doorX;
-                        agent.targetY = next.doorY;
-                        agent.path = [];
-                    }
+                    const next = dests[Math.floor(Math.random() * dests.length)];
+                    agent.targetX = next.doorX; agent.targetY = next.doorY; agent.path = [];
                 }
-                // Pathfinding needed?
                 if (agent.path.length === 0) {
                     const p = findPath(agent.x, agent.y, agent.targetX, agent.targetY, grid);
                     if (p.length > 0) agent.path = p;
                 }
-                // Move
                 if (agent.path.length > 0) {
-                    const step = agent.path.shift();
-                    agent.x = step.x;
-                    agent.y = step.y;
+                    const step = agent.path.shift(); agent.x = step.x; agent.y = step.y;
                 }
             }
-
-            // Draw Agent
-            const x = agent.x * cellW;
-            const y = agent.y * cellH;
-            ctx.fillStyle = COLORS.BG_AGENT;
-            ctx.fillRect(x, y, cellW, cellH);
-            ctx.fillStyle = COLORS.FG_AGENT;
-            ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
+            const x = agent.x * cellW; const y = agent.y * cellH;
+            ctx.fillStyle = COLORS.BG_AGENT; ctx.fillRect(x, y, cellW, cellH);
+            ctx.fillStyle = COLORS.FG_AGENT; ctx.font = `bold ${fontSize}px "Fira Code", monospace`;
             ctx.fillText('@', x, y + cellH*0.15);
         });
-        
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform for next clear
+        ctx.setTransform(1, 0, 0, 1, 0, 0); 
         frameIdRef.current = requestAnimationFrame(render);
     };
-
     frameIdRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frameIdRef.current);
   }, [fontSize, grid, poiList]);
 
+  // --- Static BG Render ---
+  useEffect(() => {
+    const canvas = bgCanvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = MAP_COLS * fontSize * 0.6 * dpr;
+    canvas.height = MAP_ROWS * fontSize * dpr;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = COLORS.BG; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = `bold ${fontSize}px "Fira Code", monospace`; ctx.textBaseline = 'top';
+        const cellW = (canvas.width/dpr) / MAP_COLS; const cellH = (canvas.height/dpr) / MAP_ROWS;
+        grid.forEach((cell: any, idx: number) => {
+            const x = (idx % MAP_COLS) * cellW; const y = Math.floor(idx / MAP_COLS) * cellH;
+            if (cell.bg) { ctx.fillStyle = cell.bg; ctx.fillRect(x, y, cellW+0.5, cellH+0.5); }
+            if (cell.char !== ' ') { ctx.fillStyle = cell.fg; ctx.fillText(cell.char, x, y + cellH*0.15); }
+        });
+    }
+  }, [fontSize, grid]);
+
   return (
     <div ref={containerRef} className="w-full h-full bg-[#23242a] flex items-center justify-center overflow-hidden p-4 relative">
-      {/* Layer 1: Background (Static) */}
       <canvas ref={bgCanvasRef} className="absolute inset-0 shadow-2xl m-auto" style={{width:'100%', height:'100%', objectFit:'contain'}} />
-      {/* Layer 2: Agents (Dynamic) */}
       <canvas ref={fgCanvasRef} className="absolute inset-0 m-auto" style={{width:'100%', height:'100%', objectFit:'contain'}} />
     </div>
   );
