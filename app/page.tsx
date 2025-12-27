@@ -7,15 +7,16 @@ type Agent = { id: number; name: string; job: string; hp: number; hunger: number
 
 const DEFAULT_DATA = {
     agents: [
-        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Walking down the Green Boulevard..." },
-        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Inspecting the high-density blocks..." },
-        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Patrolling the perimeter..." },
-        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Resting in the central park..." },
+        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Visiting the Garden District..." },
+        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Checking the dual-entrance City Hall..." },
+        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Patrolling the high-density block..." },
+        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Walking home along the path..." },
     ],
     logs: [
         "System initialized.",
-        "Corrective Action: Housing density enforced (Min 8/block).",
-        "Landscape: Formal Green Boulevard established.",
+        "Zoning Regulation: 3 Distinct Density Patterns (12/10/7).",
+        "Civic Upgrade: Dual-entrance buildings enabled.",
+        "Infrastructure: Full path connectivity ensured.",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
 };
@@ -71,7 +72,7 @@ export default function Home() {
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> AI_TOWN_SIM</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> FIXED DENSITY (8/12) & BOULEVARD</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> TRI-DENSITY ZONING</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
