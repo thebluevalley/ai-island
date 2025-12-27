@@ -1,6 +1,7 @@
 // app/api/agent-brain/route.ts
 import { NextResponse } from 'next/server';
-import { getWorkerForTask, getBaseUrl, TaskType } from '@/app/lib/llm-config';
+// Fix: Use relative path to avoid alias issues during build
+import { getWorkerForTask, getBaseUrl, TaskType } from '../../lib/llm-config';
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Missing API Key: ${worker.keyName}` }, { status: 500 });
     }
 
-    // 构建 Prompt
+    // Prompt Construction
     let systemPrompt = `You are playing a role in a virtual town simulation.
     Your name is ${agent.name}, your job is ${agent.job}.
     Your personality is: ${agent.mood}.
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
         Response format: {"state": "NEW_STATE", "reason": "Short reason"}`;
     }
 
-    // 调用 LLM
+    // Call LLM
     const response = await fetch(`${getBaseUrl(worker.provider)}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
 
     const data = await response.json();
     
-    // 解析结果
+    // Parse Result
     let result = { content: "..." };
     if (data.choices && data.choices[0].message.content) {
         try {
