@@ -7,16 +7,15 @@ type Agent = { id: number; name: string; job: string; hp: number; hunger: number
 
 const DEFAULT_DATA = {
     agents: [
-        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Heading to neighbor's house..." },
-        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Surveying housing density..." },
-        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Checking main avenue..." },
-        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Returning from hospital..." },
+        { id: 1, name: "Alice", job: "Citizen", x: 0, y: 0, actionLog: "Walking down the Green Boulevard..." },
+        { id: 2, name: "Bob", job: "Mayor", x: 0, y: 0, actionLog: "Inspecting the high-density blocks..." },
+        { id: 3, name: "Charlie", job: "Guard", x: 0, y: 0, actionLog: "Patrolling the perimeter..." },
+        { id: 4, name: "Diana", job: "Doctor", x: 0, y: 0, actionLog: "Resting in the central park..." },
     ],
     logs: [
         "System initialized.",
-        "Housing Directive: Minimum 8 units per residential block enforced.",
-        "Infrastructure: Main roads widened, green belts preserved.",
-        "Central Park and Civic Center operational.",
+        "Corrective Action: Housing density enforced (Min 8/block).",
+        "Landscape: Formal Green Boulevard established.",
         "Waiting for AI backend connection (Demo Mode)..."
     ]
 };
@@ -72,7 +71,7 @@ export default function Home() {
          <div className="h-8 border-b border-[#2b2d35] flex items-center justify-between px-3 text-xs bg-[#282a30]">
              <div className="flex gap-4">
                  <span className="text-[#8abeb7] font-bold flex items-center gap-1"><Terminal size={12}/> AI_TOWN_SIM</span>
-                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> HIGH DENSITY (MIN 8)</span>
+                 <span className="text-[#5c6370] flex items-center gap-1"><Map size={12}/> FIXED DENSITY (8/12) & BOULEVARD</span>
              </div>
              <div className={`${isDemo ? 'text-yellow-600' : 'text-green-600'} font-bold`}>
                  {isDemo ? "DEMO MODE" : `LIVE TICK: ${tick}`}
@@ -111,7 +110,7 @@ export default function Home() {
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#d4b595] text-[#d4b595] flex items-center justify-center">#</div><span>House</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#5c6370] border border-[#5c6370] flex items-center justify-center"></div><span>Main Rd</span></div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 border border-[#b294bb] text-[#b294bb] flex items-center justify-center">#</div><span>Civic</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#e06c75] text-[#fff] flex items-center justify-center">@</div><span>Agent</span></div>
+                            <div className="flex items-center gap-2"><span className="text-[#98c379]">♣</span><span>Trees</span></div>
                         </div>
                     </div>
                     <div>
