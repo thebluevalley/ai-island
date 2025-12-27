@@ -23,7 +23,7 @@ const COLORS: any = {
   FG_AGENT: '#ffffff', BG_AGENT: '#e06c75'
 };
 
-// 5x2 网格 + 宽边距
+// 5x2 网格
 const MARGIN_X = 14; 
 const MARGIN_Y = 8;
 const BLOCK_W = 46; 
@@ -34,6 +34,7 @@ const GRID_ROWS = 2;
 const MAP_COLS = BLOCK_W * GRID_COLS + MARGIN_X * 2; 
 const MAP_ROWS = BLOCK_H * GRID_ROWS + MARGIN_Y * 2; 
 
+// 房屋尺寸
 const HOUSE_W = 8;
 const HOUSE_H = 6;
 const MAIN_ROAD_W = 4;
@@ -44,7 +45,7 @@ const random = (x: number, y: number) => {
     return sin - Math.floor(sin);
 };
 
-// Pathfinding
+// BFS Pathfinding
 const findPath = (startX: number, startY: number, endX: number, endY: number, grid: any[]) => {
     const queue = [{x: startX, y: startY, path: [] as any[]}];
     const visited = new Set();
@@ -120,10 +121,12 @@ export default function GameMap({ worldData }: { worldData: any }) {
     };
 
     const drawBuilding = (x: number, y: number, w: number, h: number, type: 'RES' | 'COM' | 'CIV' | 'CAFE', facing: string = 'DOWN') => {
+        // Strict Collision Check
         for(let iy=y; iy<y+h; iy++) for(let ix=x; ix<x+w; ix++) {
             const idx = iy*MAP_COLS+ix;
             if(ix>=MAP_COLS || iy>=MAP_ROWS || grid[idx]?.isBldg || grid[idx]?.isRoad) return null; 
         }
+
         let wallColor = COLORS.FG_RES_WALL;
         let doorColor = COLORS.FG_RES_DOOR;
         if (type === 'COM') { wallColor = COLORS.FG_COM_WALL; doorColor = COLORS.FG_COM_DOOR; }
@@ -162,48 +165,30 @@ export default function GameMap({ worldData }: { worldData: any }) {
         fillRect(startX, y, MAP_COLS - MARGIN_X*2, MAIN_ROAD_W, CHARS.ROAD_MAIN, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
 
-    // === 2. Boulevard Green Belt (Adding trees along the main horizontal avenue) ===
-    // Main avenue is between row 0 and row 1.
-    // Row 0 blocks bottom edge: y = startY + BLOCK_H - MAIN_ROAD_W
-    // Row 1 blocks top edge: y = startY + BLOCK_H
-    
-    // Top side of Avenue (Bottom of Row 0)
+    // Green Boulevard
     const avenueY = startY + BLOCK_H;
-    
     for (let bx=0; bx<GRID_COLS; bx++) {
         const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
         const sw = BLOCK_W - MAIN_ROAD_W;
-        
-        // Tree Line Above Avenue
         for(let ix=sx; ix<sx+sw; ix++) {
-            if(random(ix, avenueY-MAIN_ROAD_W-2) > 0.1) 
-                setCell(ix, avenueY - MAIN_ROAD_W - 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
-            if(random(ix, avenueY-MAIN_ROAD_W-3) > 0.3) 
-                setCell(ix, avenueY - MAIN_ROAD_W - 3, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
-        }
-        // Tree Line Below Avenue
-        for(let ix=sx; ix<sx+sw; ix++) {
-            if(random(ix, avenueY+2) > 0.1) 
-                setCell(ix, avenueY + 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
-            if(random(ix, avenueY+3) > 0.3) 
-                setCell(ix, avenueY + 3, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+            if(random(ix, avenueY)>0.1) setCell(ix, avenueY - MAIN_ROAD_W - 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
+            if(random(ix, avenueY)>0.1) setCell(ix, avenueY + 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
         }
     }
 
-    // === 3. Block Filling ===
+    // === 2. Block Filling ===
     for (let by=0; by<GRID_ROWS; by++) {
         for (let bx=0; bx<GRID_COLS; bx++) {
             const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
             const sy = startY + by * BLOCK_H + MAIN_ROAD_W;
-            const sw = BLOCK_W - MAIN_ROAD_W; 
-            const sh = BLOCK_H - MAIN_ROAD_W; 
+            const sw = BLOCK_W - MAIN_ROAD_W; // ~42
+            const sh = BLOCK_H - MAIN_ROAD_W; // ~38
             const centerX = sx + Math.floor(sw/2);
             const centerY = sy + Math.floor(sh/2);
 
-            // Block (2,0): Civic Center (4 buildings)
+            // SPECIAL: Civic Center (2,0)
             if (bx === 2 && by === 0) {
-                // Adjust layout to account for green belt at bottom
-                const effectiveH = sh - 4; // leave room for trees
+                const effectiveH = sh - 4; 
                 for(let iy=sy; iy<sy+effectiveH; iy++) for(let ix=sx; ix<sx+sw; ix++) 
                     if(random(ix, iy)>0.6) setCell(ix, iy, CHARS.FLOOR, '#333', COLORS.BG_GRASS);
                 const quads = [{x:sx, y:sy}, {x:sx+sw/2, y:sy}, {x:sx, y:sy+effectiveH/2}, {x:sx+sw/2, y:sy+effectiveH/2}];
@@ -212,79 +197,91 @@ export default function GameMap({ worldData }: { worldData: any }) {
                     const res = drawBuilding(q.x + 4, q.y + 4, 12, 10, 'CIV');
                     if(res) { drawPath(res.doorX, res.doorY+1, res.doorX, res.doorY+2); drawPath(res.doorX, res.doorY+2, centerX, centerY); }
                 }
-                drawPath(centerX, centerY, centerX, sy+sh); // path through green belt
+                drawPath(centerX, centerY, centerX, sy+sh); 
                 continue;
             }
 
-            // Block (2,1): Park + Civic (Reoriented)
-            // Top Half: Park (Facing Main Avenue)
-            // Bottom Half: Civic Buildings
+            // SPECIAL: Park (2,1)
             if (bx === 2 && by === 1) {
                 const parkH = Math.floor(sh/2);
-                
-                // Top Half: Park (Avoid the green belt we just drew at sy+2)
-                for(let iy=sy+4; iy<sy+parkH; iy++) for(let ix=sx; ix<sx+sw; ix++) {
-                    setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
-                }
+                for(let iy=sy+4; iy<sy+parkH; iy++) for(let ix=sx; ix<sx+sw; ix++) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 fillRect(sx+6, sy+6, sw-12, parkH-10, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
-
-                // Bottom Half: 2 Civic Buildings
                 const bY = sy + parkH + 2;
-                // Left Bldg
                 const b1 = drawBuilding(sx + 4, bY, 12, 10, 'CIV');
                 if(b1) drawPath(b1.doorX, b1.doorY+1, b1.doorX, sy+sh);
-                // Right Bldg
                 const b2 = drawBuilding(sx + sw - 16, bY, 12, 10, 'CIV');
                 if(b2) drawPath(b2.doorX, b2.doorY+1, b2.doorX, sy+sh);
-                
-                // Path from Avenue into Park
                 drawPath(centerX, sy, centerX, sy+parkH);
                 continue;
             }
 
-            // Residential
+            // === RESIDENTIAL (Forced Population) ===
+            // Internal Road
             const midX = Math.floor(sx + sw/2);
             const midY = Math.floor(sy + sh/2);
+            // Draw internal roads (2 wide)
             fillRect(sx, midY, sw, SUB_ROAD_W, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
             fillRect(midX, sy, SUB_ROAD_W, sh, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
             setCell(midX, midY, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
 
-            const isDense = random(bx, by) > 0.6;
-            const slots: {x: number, y: number, f: string, cy?: number, cx?: number}[] = [];
-
-            // Adjust y-offsets to account for green belts if adjacent to avenue
+            const isDense = random(bx, by) > 0.5; // 50% dense blocks
+            
+            // Adjust y-offsets for green belts
             let topY = sy + 2;
             let bottomY = sy + sh - HOUSE_H - 2;
-            if (by === 0) bottomY -= 4; // Row 0 has trees at bottom
-            if (by === 1) topY += 4;    // Row 1 has trees at top
+            if (by === 0) bottomY -= 4; 
+            if (by === 1) topY += 4;    
 
+            const slots: {x: number, y: number, f: string, cy?: number, cx?: number}[] = [];
+
+            // Define Slots STRICTLY (No randomness in generation)
             if (isDense) {
-                // 12 Houses
-                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: topY, f: 'UP', cy: sy });
-                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: bottomY, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+2, y: sy+HOUSE_H+6, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+2, y: sy+sh-HOUSE_H*2-6, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+HOUSE_H+6, f: 'RIGHT', cx: sx+sw });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H*2-6, f: 'RIGHT', cx: sx+sw });
+                // Layout: 12 Houses
+                // Top: 4
+                slots.push({ x: sx+1, y: topY, f: 'UP', cy: sy });
+                slots.push({ x: sx+1 + 10, y: topY, f: 'UP', cy: sy });
+                slots.push({ x: sx+1 + 20, y: topY, f: 'UP', cy: sy });
+                slots.push({ x: sx+1 + 30, y: topY, f: 'UP', cy: sy });
+                // Bottom: 4
+                slots.push({ x: sx+1, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+1 + 10, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+1 + 20, y: bottomY, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+1 + 30, y: bottomY, f: 'DOWN', cy: sy+sh });
+                // Left: 2 (Vertical stack)
+                slots.push({ x: sx+2, y: sy + 10, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+2, y: sy + sh - 16, f: 'LEFT', cx: sx });
+                // Right: 2
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + 10, f: 'RIGHT', cx: sx+sw });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + sh - 16, f: 'RIGHT', cx: sx+sw });
             } else {
-                // 8 Houses
-                slots.push({ x: sx+2, y: topY, f: 'UP', cy: sy }); 
-                slots.push({ x: sx+sw/2-HOUSE_W/2, y: topY, f: 'UP', cy: sy }); 
-                slots.push({ x: sx+sw-HOUSE_W-2, y: topY, f: 'UP', cy: sy }); 
-                
+                // Layout: 8 Houses (Spread out)
+                // Top: 3
+                slots.push({ x: sx+2, y: topY, f: 'UP', cy: sy });
+                slots.push({ x: sx+sw/2-HOUSE_W/2, y: topY, f: 'UP', cy: sy });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: topY, f: 'UP', cy: sy });
+                // Bottom: 3
                 slots.push({ x: sx+2, y: bottomY, f: 'DOWN', cy: sy+sh });
                 slots.push({ x: sx+sw/2-HOUSE_W/2, y: bottomY, f: 'DOWN', cy: sy+sh });
                 slots.push({ x: sx+sw-HOUSE_W-2, y: bottomY, f: 'DOWN', cy: sy+sh });
-
-                slots.push({ x: sx+2, y: midY-HOUSE_H/2, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: midY-HOUSE_H/2, f: 'RIGHT', cx: sx+sw });
+                // Left: 1
+                slots.push({ x: sx+2, y: midY - HOUSE_H/2, f: 'LEFT', cx: sx });
+                // Right: 1
+                slots.push({ x: sx+sw-HOUSE_W-2, y: midY - HOUSE_H/2, f: 'RIGHT', cx: sx+sw });
             }
 
+            // Build ALL slots
             slots.forEach(s => {
                 const res = drawBuilding(s.x, s.y, HOUSE_W, HOUSE_H, 'RES', s.f);
                 if (res) {
                     if (s.f === 'UP' || s.f === 'DOWN') drawPath(res.doorX, res.doorY, res.doorX, s.cy!);
                     else drawPath(res.doorX, res.doorY, s.cx!, res.doorY);
+                } else {
+                    // Fallback: If blocked, try nudging slightly
+                    const res2 = drawBuilding(s.x+1, s.y, HOUSE_W, HOUSE_H, 'RES', s.f);
+                    if(res2) {
+                         if (s.f === 'UP' || s.f === 'DOWN') drawPath(res2.doorX, res2.doorY, res2.doorX, s.cy!);
+                         else drawPath(res2.doorX, res2.doorY, s.cx!, res2.doorY);
+                    }
                 }
             });
         }
@@ -308,7 +305,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
     }
   }, [agents, poiList]);
 
-  // --- Animation ---
   useEffect(() => {
     const canvas = fgCanvasRef.current;
     if (!canvas) return;
@@ -324,7 +320,6 @@ export default function GameMap({ worldData }: { worldData: any }) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.scale(dpr, dpr);
         const now = Date.now();
-        
         agentsRef.current.forEach(agent => {
             if (now - agent.lastUpdate > 100) { 
                 agent.lastUpdate = now;
@@ -353,7 +348,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
     return () => cancelAnimationFrame(frameIdRef.current);
   }, [fontSize, grid, poiList]);
 
-  // --- Static BG Render ---
+  // --- Static BG ---
   useEffect(() => {
     const canvas = bgCanvasRef.current;
     if (!canvas) return;
@@ -373,6 +368,23 @@ export default function GameMap({ worldData }: { worldData: any }) {
         });
     }
   }, [fontSize, grid]);
+
+  // Resize
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const resizeObserver = new ResizeObserver(entries => {
+        for (let entry of entries) {
+            const { width, height } = entry.contentRect;
+            const charW = width / MAP_COLS;
+            const charH = height / MAP_ROWS;
+            const size = Math.floor(Math.min(charW / 0.6, charH));
+            setFontSize(Math.max(4, size));
+        }
+    });
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   return (
     <div ref={containerRef} className="w-full h-full bg-[#23242a] flex items-center justify-center overflow-hidden p-4 relative">
