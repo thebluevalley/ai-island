@@ -4,8 +4,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 // --- 1. 字符集 ---
 const CHARS: any = {
   EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
-  ROAD_MAIN: '▒', // 主干道
-  ROAD_SUB:  '░', // 次干道
+  ROAD_MAIN: '▒', // 主路实心
+  ROAD_SUB:  '░', // 支路虚点
   PATH:      '·', 
   WALL: '#', DOOR: '+', FLOOR: ' ',
   CAFE_SIGN: '☕', PARK_SIGN: '♣', LIB_SIGN: '📖', HOSP_SIGN: '✚'
@@ -36,7 +36,6 @@ const GRID_ROWS = 2;
 const MAP_COLS = BLOCK_W * GRID_COLS + MARGIN_X * 2; 
 const MAP_ROWS = BLOCK_H * GRID_ROWS + MARGIN_Y * 2; 
 
-// 房屋尺寸
 const HOUSE_W = 8;
 const HOUSE_H = 6;
 const MAIN_ROAD_W = 4;
@@ -117,37 +116,28 @@ export default function GameMap({ worldData }: { worldData: any }) {
         const safeSet = (x: number, y: number) => {
             if(x>=0 && x<MAP_COLS && y>=0 && y<MAP_ROWS) {
                 const idx = y*MAP_COLS+x;
-                if(!grid[idx].isRoad && !grid[idx].isBldg) setCell(x, y, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS);
+                // Only draw path on Empty/Grass/Road, NOT Buildings
+                if(!grid[idx].isBldg) setCell(x, y, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS);
             }
         };
         while(currX !== x2) { currX += (x2 > currX ? 1 : -1); safeSet(currX, currY); }
         while(currY !== y2) { currY += (y2 > currY ? 1 : -1); safeSet(currX, currY); }
     };
 
-    // Upgraded Building Logic: Supports Multi-Door
     const drawBuilding = (x: number, y: number, w: number, h: number, type: 'RES' | 'COM' | 'CIV' | 'CAFE', facing: string = 'DOWN') => {
-        // Collision check
-        for(let iy=y; iy<y+h; iy++) for(let ix=x; ix<x+w; ix++) {
-            const idx = iy*MAP_COLS+ix;
-            if(ix>=MAP_COLS || iy>=MAP_ROWS || grid[idx]?.isBldg || grid[idx]?.isRoad) return null; 
-        }
-
+        // Force Build: No collision check here. We trust the coordinate calculation.
+        
         let wallColor = COLORS.FG_RES_WALL;
         let doorColor = COLORS.FG_RES_DOOR;
         if (type === 'COM') { wallColor = COLORS.FG_COM_WALL; doorColor = COLORS.FG_COM_DOOR; }
         if (type === 'CIV') { wallColor = COLORS.FG_CIV_WALL; doorColor = COLORS.FG_CIV_DOOR; }
         if (type === 'CAFE') { wallColor = COLORS.FG_CAFE; doorColor = COLORS.FG_CAFE; }
 
-        // Walls
         for(let ix=x; ix<x+w; ix++) { setCell(ix, y, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); setCell(ix, y+h-1, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); }
         for(let iy=y; iy<y+h; iy++) { setCell(x, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); setCell(x+w-1, iy, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); }
-        // Floor
         fillRect(x+1, y+1, w-2, h-2, CHARS.FLOOR, '#222', COLORS.BG_BLDG, false, true);
         
-        // Door Calculation
         const doors = [];
-        
-        // Door 1 (Primary)
         let d1x = x + Math.floor(w/2);
         let d1y = y + h - 1;
         
@@ -159,41 +149,34 @@ export default function GameMap({ worldData }: { worldData: any }) {
         setCell(d1x, d1y, CHARS.DOOR, doorColor, COLORS.BG_BLDG, false, true);
         doors.push({x: d1x, y: d1y});
 
-        // Door 2 (For Civic Buildings - Symmetrical)
         if (type === 'CIV') {
-            let d2x = d1x; 
-            let d2y = d1y;
-            // Shift door 1 left, door 2 right
+            let d2x = d1x; let d2y = d1y;
             if (facing === 'UP' || facing === 'DOWN') {
-                setCell(d1x, d1y, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); // Close center
-                d1x = x + Math.floor(w/3);
-                d2x = x + Math.floor(2*w/3);
+                setCell(d1x, d1y, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); 
+                d1x = x + Math.floor(w/3); d2x = x + Math.floor(2*w/3);
             } else {
-                setCell(d1x, d1y, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); // Close center
-                d1y = y + Math.floor(h/3);
-                d2y = y + Math.floor(2*h/3);
+                setCell(d1x, d1y, CHARS.WALL, wallColor, COLORS.BG_BLDG, false, true); 
+                d1y = y + Math.floor(h/3); d2y = y + Math.floor(2*h/3);
             }
-            // Draw both
             setCell(d1x, d1y, CHARS.DOOR, doorColor, COLORS.BG_BLDG, false, true);
             setCell(d2x, d2y, CHARS.DOOR, doorColor, COLORS.BG_BLDG, false, true);
-            doors[0] = {x: d1x, y: d1y}; // Update door 1
-            doors.push({x: d2x, y: d2y}); // Add door 2
+            doors[0] = {x: d1x, y: d1y}; 
+            doors.push({x: d2x, y: d2y}); 
         }
 
-        // Registry (Use primary door for agent nav)
         buildingsRegistry.push({ type, x, y, w, h, doorX: d1x, doorY: d1y, id: buildingsRegistry.length });
         
         if (type === 'CAFE') setCell(x+Math.floor(w/2), y+Math.floor(h/2), CHARS.CAFE_SIGN, COLORS.FG_CAFE, COLORS.BG_BLDG, false, true);
         if (type === 'CIV') setCell(x+Math.floor(w/2), y+Math.floor(h/2), CHARS.LIB_SIGN, COLORS.FG_CIV_WALL, COLORS.BG_BLDG, false, true);
 
-        return { doors }; // Return array of doors
+        return { doors }; 
     };
 
-    // === 1. Draw Infrastructure ===
+    // === 1. Draw Main Infrastructure ===
     const startX = MARGIN_X;
     const startY = MARGIN_Y;
 
-    // Roads
+    // Main Roads
     for(let i=0; i<=GRID_COLS; i++) {
         let x = startX + i * BLOCK_W; if(i===GRID_COLS) x-=MAIN_ROAD_W;
         fillRect(x, startY, MAIN_ROAD_W, MAP_ROWS - MARGIN_Y*2, CHARS.ROAD_MAIN, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
@@ -203,18 +186,17 @@ export default function GameMap({ worldData }: { worldData: any }) {
         fillRect(startX, y, MAP_COLS - MARGIN_X*2, MAIN_ROAD_W, CHARS.ROAD_MAIN, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
 
-    // Green Boulevard (Symmetrical)
+    // Formal Green Boulevard (Main Avenue)
     const avenueY = startY + BLOCK_H;
     for (let bx=0; bx<GRID_COLS; bx++) {
         const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
         const sw = BLOCK_W - MAIN_ROAD_W;
-        // Top Strip
+        // Strictly adhere to road edge
         fillRect(sx, avenueY - MAIN_ROAD_W - 2, sw, 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
-        // Bottom Strip
         fillRect(sx, avenueY + 2, sw, 2, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
     }
 
-    // === 2. Block Logic ===
+    // === 2. Block Filling ===
     for (let by=0; by<GRID_ROWS; by++) {
         for (let bx=0; bx<GRID_COLS; bx++) {
             const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
@@ -224,7 +206,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
             const centerX = sx + Math.floor(sw/2);
             const centerY = sy + Math.floor(sh/2);
 
-            // SPECIAL: Civic Center (2,0)
+            // SPECIAL 1: Civic Center (2,0)
             if (bx === 2 && by === 0) {
                 const effectiveH = sh - 4; 
                 for(let iy=sy; iy<sy+effectiveH; iy++) for(let ix=sx; ix<sx+sw; ix++) if(random(ix, iy)>0.6) setCell(ix, iy, CHARS.FLOOR, '#333', COLORS.BG_GRASS);
@@ -232,23 +214,18 @@ export default function GameMap({ worldData }: { worldData: any }) {
                 for(let i=0; i<4; i++) {
                     const q = quads[i];
                     const res = drawBuilding(q.x + 4, q.y + 4, 12, 10, 'CIV');
-                    // Connect both doors
-                    if(res) res.doors.forEach(d => {
-                        drawPath(d.x, d.y+1, d.x, d.y+2);
-                        drawPath(d.x, d.y+2, centerX, centerY);
-                    });
+                    if(res) res.doors.forEach(d => { drawPath(d.x, d.y+1, d.x, d.y+2); drawPath(d.x, d.y+2, centerX, centerY); });
                 }
                 drawPath(centerX, centerY, centerX, sy+sh); 
                 continue;
             }
 
-            // SPECIAL: Park (2,1)
+            // SPECIAL 2: Park (2,1)
             if (bx === 2 && by === 1) {
                 const parkH = Math.floor(sh/2) - 4;
                 for(let iy=sy+4; iy<sy+parkH; iy++) for(let ix=sx; ix<sx+sw; ix++) setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
                 fillRect(sx+6, sy+6, sw-12, parkH-10, CHARS.WATER, COLORS.FG_WATER, COLORS.BG_GRASS);
                 const bY = sy + Math.floor(sh/2) + 2;
-                // Left & Right Civic Buildings
                 [sx+4, sx+sw-16].forEach(bxPos => {
                     const b = drawBuilding(bxPos, bY, 12, 10, 'CIV');
                     if(b) b.doors.forEach(d => drawPath(d.x, d.y+1, d.x, sy+sh));
@@ -257,95 +234,88 @@ export default function GameMap({ worldData }: { worldData: any }) {
                 continue;
             }
 
-            // === RESIDENTIAL: 3 DENSITY MODES ===
-            // 12 (High), 10 (Med), 7 (Garden)
+            // === RESIDENTIAL: PRIORITY ORDER -> HOUSES FIRST ===
             
-            // Draw Internal Road
-            const midX = Math.floor(sx + sw/2);
-            const midY = Math.floor(sy + sh/2);
-            fillRect(sx, midY, sw, SUB_ROAD_W, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
-            fillRect(midX, sy, SUB_ROAD_W, sh, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
-            setCell(midX, midY, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
-
-            // Determine Pattern
+            // Step A: Determine Mode (A=12, B=10, C=7)
             const rand = random(bx, by);
-            let pattern = 'A'; // Default 12
-            if (rand > 0.4) pattern = 'B'; // 10
-            if (rand > 0.75) pattern = 'C'; // 7
+            let mode = 'A';
+            if (rand > 0.4) mode = 'B';
+            if (rand > 0.75) mode = 'C';
+
+            // Step B: Calculate Slots (Mathematical Safety)
+            // Area: x[sx...sx+sw], y[sy...sy+sh]
+            // Green belt adjustments
+            let safeTop = sy + 2; 
+            let safeBot = sy + sh - HOUSE_H - 2;
+            if (by === 1) safeTop += 2; // Trees at top
+            if (by === 0) safeBot -= 2; // Trees at bottom
 
             const slots: {x: number, y: number, f: string, cy?: number, cx?: number}[] = [];
-            const gardens: {x: number, y: number, w: number, h: number}[] = [];
 
-            // Usable Vertical Space (Avoid Trees)
-            let topY = sy + 2;
-            let bottomY = sy + sh - HOUSE_H - 2;
-            if (by === 0) bottomY -= 4; // Tree offset
-            if (by === 1) topY += 4;    // Tree offset
-
-            if (pattern === 'A') { 
-                // === 12 Houses (High Density) ===
-                for(let i=0; i<4; i++) slots.push({ x: sx+1 + i*9, y: topY, f: 'UP', cy: sy });
-                for(let i=0; i<4; i++) slots.push({ x: sx+1 + i*9, y: bottomY, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+2, y: sy+HOUSE_H+6, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+2, y: sy+sh-HOUSE_H*2-6, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+HOUSE_H+6, f: 'RIGHT', cx: sx+sw });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H*2-6, f: 'RIGHT', cx: sx+sw });
-            } 
-            else if (pattern === 'B') {
-                // === 10 Houses (Medium + Corner Parks) ===
-                // Top: 4
-                for(let i=0; i<4; i++) slots.push({ x: sx+1 + i*9, y: topY, f: 'UP', cy: sy });
-                // Bottom: 4
-                for(let i=0; i<4; i++) slots.push({ x: sx+1 + i*9, y: bottomY, f: 'DOWN', cy: sy+sh });
-                // Sides: 1 each (Centered)
-                slots.push({ x: sx+2, y: midY - HOUSE_H/2, f: 'LEFT', cx: sx });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: midY - HOUSE_H/2, f: 'RIGHT', cx: sx+sw });
-                
-                // Gardens in 4 inner corners
-                gardens.push({x: sx+2, y: sy+HOUSE_H+4, w: 6, h: 6});
-                gardens.push({x: sx+sw-8, y: sy+HOUSE_H+4, w: 6, h: 6});
-                gardens.push({x: sx+2, y: sy+sh-HOUSE_H*2-4, w: 6, h: 6});
-                gardens.push({x: sx+sw-8, y: sy+sh-HOUSE_H*2-4, w: 6, h: 6});
-            }
-            else {
-                // === 7 Houses (Garden Mode) ===
-                // Top: 2 (Corners)
-                slots.push({ x: sx+2, y: topY, f: 'UP', cy: sy });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: topY, f: 'UP', cy: sy });
-                // Bottom: 2 (Corners)
-                slots.push({ x: sx+2, y: bottomY, f: 'DOWN', cy: sy+sh });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: bottomY, f: 'DOWN', cy: sy+sh });
-                // Left: 1
-                slots.push({ x: sx+2, y: midY - HOUSE_H/2, f: 'LEFT', cx: sx });
-                // Right: 2 (Upper and Lower)
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+HOUSE_H+4, f: 'RIGHT', cx: sx+sw });
-                slots.push({ x: sx+sw-HOUSE_W-2, y: sy+sh-HOUSE_H*2-4, f: 'RIGHT', cx: sx+sw });
-
-                // Massive Gardens in center gaps
-                gardens.push({x: sx+12, y: sy+2, w: 16, h: 8}); // Top Center
-                gardens.push({x: sx+12, y: sy+sh-10, w: 16, h: 8}); // Bottom Center
-                gardens.push({x: sx+4, y: midY-4, w: 8, h: 8}); // Inner Left
+            if (mode === 'A') { // 12 Houses
+                // Top Row (4)
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: safeTop, f: 'UP', cy: sy });
+                // Bottom Row (4)
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: safeBot, f: 'DOWN', cy: sy+sh });
+                // Sides (2 each)
+                slots.push({ x: sx+2, y: sy + 12, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+2, y: sy + sh - 18, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + 12, f: 'RIGHT', cx: sx+sw });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + sh - 18, f: 'RIGHT', cx: sx+sw });
+            } else if (mode === 'B') { // 10 Houses
+                // Top (4)
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: safeTop, f: 'UP', cy: sy });
+                // Bottom (4)
+                for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: safeBot, f: 'DOWN', cy: sy+sh });
+                // Sides (1 each, centered)
+                slots.push({ x: sx+2, y: centerY - HOUSE_H/2, f: 'LEFT', cx: sx });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: centerY - HOUSE_H/2, f: 'RIGHT', cx: sx+sw });
+            } else { // 7 Houses
+                // Corners (2 Top, 2 Bottom)
+                slots.push({ x: sx+2, y: safeTop, f: 'UP', cy: sy });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: safeTop, f: 'UP', cy: sy });
+                slots.push({ x: sx+2, y: safeBot, f: 'DOWN', cy: sy+sh });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: safeBot, f: 'DOWN', cy: sy+sh });
+                // Left (1)
+                slots.push({ x: sx+2, y: centerY - HOUSE_H/2, f: 'LEFT', cx: sx });
+                // Right (2)
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + 12, f: 'RIGHT', cx: sx+sw });
+                slots.push({ x: sx+sw-HOUSE_W-2, y: sy + sh - 18, f: 'RIGHT', cx: sx+sw });
             }
 
-            // Build Houses & Paths
+            // Step C: FORCE BUILD HOUSES
             slots.forEach(s => {
                 const res = drawBuilding(s.x, s.y, HOUSE_W, HOUSE_H, 'RES', s.f);
+                // Step D: Draw Paths IMMEDIATELY
                 if (res) {
-                    res.doors.forEach(d => {
-                        if (s.f === 'UP' || s.f === 'DOWN') drawPath(d.x, d.y, d.x, s.cy!);
-                        else drawPath(d.x, d.y, s.cx!, d.y);
-                    });
+                    if (s.f === 'UP' || s.f === 'DOWN') drawPath(res.doors[0].x, res.doors[0].y, res.doors[0].x, s.cy!);
+                    else drawPath(res.doors[0].x, res.doors[0].y, s.cx!, res.doors[0].y);
                 }
             });
 
-            // Plant Gardens
-            gardens.forEach(g => {
-                for(let iy=g.y; iy<g.y+g.h; iy++) for(let ix=g.x; ix<g.x+g.w; ix++) {
-                    if (grid[iy*MAP_COLS+ix].char === CHARS.GRASS) { // Don't overwrite roads
+            // Step E: Draw Internal Roads (Only where empty)
+            // Just draw cross in center, setCell handles overwriting
+            // But houses are already there, so `setCell` needs to respect `isBldg`
+            // NOTE: setCell logic prevents overwriting buildings.
+            fillRect(sx, centerY, sw, SUB_ROAD_W, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
+            fillRect(centerX, sy, SUB_ROAD_W, sh, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
+            setCell(centerX, centerY, CHARS.ROAD_SUB_C, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
+
+            // Step F: Fill Gardens (Only in EMPTY spots)
+            for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
+                const idx = iy*MAP_COLS+ix;
+                // If it's grass (not house, not road, not path)
+                if (grid[idx].char === CHARS.GRASS) {
+                    // Fill pattern C centers with dense forest
+                    if (mode === 'C' && Math.abs(ix-centerX) < 10 && Math.abs(iy-centerY) < 10) {
+                        setCell(ix, iy, CHARS.TREE, COLORS.FG_FOREST, COLORS.BG_GRASS);
+                    }
+                    // Scatter trees elsewhere
+                    else if (random(ix, iy) > 0.8) {
                         setCell(ix, iy, CHARS.TREE, COLORS.FG_POCKET, COLORS.BG_GRASS);
                     }
                 }
-            });
+            }
         }
     }
 
