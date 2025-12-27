@@ -6,7 +6,7 @@ const CHARS: any = {
   EMPTY: ' ', GRASS: '·', TREE: '♣', WATER: '≈', 
   ROAD_MAIN: '▒', // 主路实心
   ROAD_SUB:  '░', // 内部宽路
-  PATH:      '·', // 入户细路
+  PATH:      '·', // 入户路 (加宽后会形成纹理)
   WALL: '#', DOOR: '+', FLOOR: ' ',
   CAFE_SIGN: '☕', PARK_SIGN: '♣', LIB_SIGN: '📖', HOSP_SIGN: '✚'
 };
@@ -18,16 +18,15 @@ const COLORS: any = {
   FG_FOREST: '#68856c', FG_WATER: '#6a9fb5', 
   FG_ROAD_MAIN: '#5c6370', 
   FG_ROAD_SUB:  '#4b5263', 
-  FG_PATH:      '#8d6e63', 
+  FG_PATH:      '#a07e72', // 稍微提亮一点路径颜色，使其更清晰
 
   FG_RES_WALL: '#d4b595', FG_RES_DOOR: '#cc8c6c', 
   FG_COM_WALL: '#61afef', FG_COM_DOOR: '#56b6c2',
   FG_CIV_WALL: '#c678dd', FG_CIV_DOOR: '#e06c75',
   FG_CAFE:     '#e5c07b', 
   
-  // 绿化微调
-  FG_POCKET:   '#565c64', // 极简草点颜色 (深灰绿)
-  FG_TREE:     '#98c379', // 大树颜色 (只在公园/大道)
+  FG_POCKET:   '#565c64', 
+  FG_TREE:     '#98c379', 
   
   BG_BLDG:     '#1e1f24', 
   FG_AGENT: '#ffffff', BG_AGENT: '#e06c75'
@@ -47,7 +46,7 @@ const MAP_ROWS = BLOCK_H * GRID_ROWS + MARGIN_Y * 2;
 const HOUSE_W = 8;
 const HOUSE_H = 6;
 const MAIN_ROAD_W = 4;
-const SUB_ROAD_W = 3; // 加宽内部道路
+const SUB_ROAD_W = 3;
 
 const random = (x: number, y: number) => {
     let sin = Math.sin(x * 12.9898 + y * 78.233);
@@ -120,20 +119,38 @@ export default function GameMap({ worldData }: { worldData: any }) {
         for(let iy=y; iy<y+h; iy++) for(let ix=x; ix<x+w; ix++) setCell(ix, iy, char, fg, bg, isRoad, isBldg);
     };
 
-    // Smart Path: Avoids Buildings, connects to Roads
+    // === UPDATED: THICK SMART PATH (2x2 Brush) ===
     const drawSmartPath = (x1: number, y1: number, x2: number, y2: number) => {
         let currX = x1, currY = y1;
-        const safeSet = (x: number, y: number) => {
-            if(x>=0 && x<MAP_COLS && y>=0 && y<MAP_ROWS) {
-                const idx = y*MAP_COLS+x;
-                // Don't overwrite Buildings or Main Roads
-                if(!grid[idx].isBldg && grid[idx].char !== CHARS.ROAD_MAIN) {
-                    setCell(x, y, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS, true);
+        
+        const safeSetBrush = (cx: number, cy: number) => {
+            // Draw a 2x2 block for visibility
+            const offsets = [[0,0], [1,0], [0,1], [1,1]];
+            offsets.forEach(off => {
+                const px = cx + off[0];
+                const py = cy + off[1];
+                if(px>=0 && px<MAP_COLS && py>=0 && py<MAP_ROWS) {
+                    const idx = py*MAP_COLS+px;
+                    // Strict check: Don't overwrite buildings or Main Roads
+                    // OK to overwrite grass, sub-roads, or existing paths
+                    if(!grid[idx].isBldg && grid[idx].char !== CHARS.ROAD_MAIN) {
+                        setCell(px, py, CHARS.PATH, COLORS.FG_PATH, COLORS.BG_GRASS, true);
+                    }
                 }
-            }
+            });
         };
-        while(currX !== x2) { currX += (x2 > currX ? 1 : -1); safeSet(currX, currY); }
-        while(currY !== y2) { currY += (y2 > currY ? 1 : -1); safeSet(currX, currY); }
+
+        // Draw start
+        safeSetBrush(currX, currY);
+
+        while(currX !== x2) { 
+            currX += (x2 > currX ? 1 : -1); 
+            safeSetBrush(currX, currY); 
+        }
+        while(currY !== y2) { 
+            currY += (y2 > currY ? 1 : -1); 
+            safeSetBrush(currX, currY); 
+        }
     };
 
     const drawBuilding = (x: number, y: number, w: number, h: number, type: 'RES' | 'COM' | 'CIV' | 'CAFE', facing: string = 'DOWN') => {
@@ -181,7 +198,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         return { doors }; 
     };
 
-    // === 1. Draw Main Infrastructure ===
+    // === 1. Infrastructure ===
     const startX = MARGIN_X;
     const startY = MARGIN_Y;
 
@@ -195,7 +212,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         fillRect(startX, y, MAP_COLS - MARGIN_X*2, MAIN_ROAD_W, CHARS.ROAD_MAIN, COLORS.FG_ROAD_MAIN, COLORS.BG_GRASS, true);
     }
 
-    // Formal Green Boulevard (Trees Only Here)
+    // Boulevard
     const avenueY = startY + BLOCK_H;
     for (let bx=0; bx<GRID_COLS; bx++) {
         const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
@@ -204,7 +221,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
         fillRect(sx, avenueY + 2, sw, 2, CHARS.TREE, COLORS.FG_TREE, COLORS.BG_GRASS);
     }
 
-    // === 2. Block Filling ===
+    // === 2. Blocks ===
     for (let by=0; by<GRID_ROWS; by++) {
         for (let bx=0; bx<GRID_COLS; bx++) {
             const sx = startX + bx * BLOCK_W + MAIN_ROAD_W;
@@ -242,56 +259,42 @@ export default function GameMap({ worldData }: { worldData: any }) {
                 continue;
             }
 
-            // === RESIDENTIAL: STRICT 12/11/10 MODES ===
-            
-            // 1. Draw Internal Roads FIRST (Wider: 3px)
-            // This defines the "No Build Zone"
+            // === RESIDENTIAL ===
             fillRect(sx, centerY-1, sw, SUB_ROAD_W, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
             fillRect(centerX-1, sy, SUB_ROAD_W, sh, CHARS.ROAD_SUB, COLORS.FG_ROAD_SUB, COLORS.BG_GRASS, true);
             
             const rand = random(bx, by);
-            let count = 12; // Majority
+            let count = 12; 
             if (rand < 0.2) count = 10;
             else if (rand < 0.4) count = 11;
 
             let topY = sy + 2;
             let bottomY = sy + sh - HOUSE_H - 2;
-            if (by === 1) topY += 2; // Tree buffer
+            if (by === 1) topY += 2; 
             if (by === 0) bottomY -= 2; 
 
             const slots: {x: number, y: number, f: string}[] = [];
 
-            // BASE: 8 Houses (Top 4 + Bottom 4)
             for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: topY, f: 'UP' });
             for(let i=0; i<4; i++) slots.push({ x: sx+2 + i*9, y: bottomY, f: 'DOWN' });
 
-            // SIDES: Add based on count
-            // Side slots are positioned safely between the top/bottom rows and the center road
             const upperSideY = sy + 10;
             const lowerSideY = sy + sh - 16;
 
             if (count >= 10) {
-                // Add Upper Left & Upper Right
                 slots.push({ x: sx+2, y: upperSideY, f: 'LEFT' });
                 slots.push({ x: sx+sw-HOUSE_W-2, y: upperSideY, f: 'RIGHT' });
             }
-            if (count >= 11) {
-                // Add Lower Left
-                slots.push({ x: sx+2, y: lowerSideY, f: 'LEFT' });
-            }
-            if (count === 12) {
-                // Add Lower Right
-                slots.push({ x: sx+sw-HOUSE_W-2, y: lowerSideY, f: 'RIGHT' });
-            }
+            if (count >= 11) slots.push({ x: sx+2, y: lowerSideY, f: 'LEFT' });
+            if (count === 12) slots.push({ x: sx+sw-HOUSE_W-2, y: lowerSideY, f: 'RIGHT' });
 
-            // 2. Build Houses (Overwriting grass, but checked coordinates ensure no road overlap)
             const builtHouses: any[] = [];
             slots.forEach(s => {
                 const res = drawBuilding(s.x, s.y, HOUSE_W, HOUSE_H, 'RES', s.f);
                 if (res) builtHouses.push({door: res.doors[0], facing: s.f});
             });
 
-            // 3. Smart Paths
+            // WIRE PATHS (Thick)
             builtHouses.forEach(h => {
                 const distTop = Math.abs(h.door.y - sy);
                 const distBot = Math.abs(h.door.y - (sy+sh));
@@ -305,16 +308,12 @@ export default function GameMap({ worldData }: { worldData: any }) {
                 else drawSmartPath(h.door.x, h.door.y, sx+sw, h.door.y);
             });
 
-            // 4. MICRO-GREENERY (No Trees, just Grass dots)
+            // MICRO GREENERY
             for(let iy=sy; iy<sy+sh; iy++) for(let ix=sx; ix<sx+sw; ix++) {
                 const idx = iy*MAP_COLS+ix;
                 const cell = grid[idx];
-                // Only on empty grass
                 if (cell.char === CHARS.GRASS && !cell.isRoad && !cell.isBldg) {
-                    // Very sparse, only use CHARS.GRASS (small dot), never TREE inside residential
-                    if (random(ix, iy) > 0.85) {
-                        setCell(ix, iy, CHARS.GRASS, COLORS.FG_POCKET, COLORS.BG_GRASS);
-                    }
+                    if (random(ix, iy) > 0.85) setCell(ix, iy, CHARS.GRASS, COLORS.FG_POCKET, COLORS.BG_GRASS);
                 }
             }
         }
@@ -323,7 +322,7 @@ export default function GameMap({ worldData }: { worldData: any }) {
     return { grid, poiList: buildingsRegistry };
   }, []);
 
-  // --- Agents & Rendering (Unchanged) ---
+  // --- Agents & Rendering ---
   useEffect(() => {
     if (agents.length > 0 && poiList.length > 0) {
         const homes = poiList.filter(b => b.type === 'RES');
